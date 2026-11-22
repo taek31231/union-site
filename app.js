@@ -58,8 +58,9 @@
   function readMock(f) {
     const v = (k) => { const x = f.get(k); return x === null || x === "" ? null : x; };
     const n = (k) => { const x = v(k); return x === null ? null : Number(x); };
-    const inq = [["soc", "통합사회", "사탐"], ["sci", "통합과학", "과탐"]]
-      .map(([k, subject, area]) => (n(`${k}.pct`) === null ? null : { subject, area, choice: "통합", pct: n(`${k}.pct`), grade: n(`${k}.grade`) }))
+    // 모두 같은 과목을 보므로 사탐·과탐 구분이 없고, 과탐·사탐 가산점도 붙지 않는다(area "통합")
+    const inq = [["soc", "통합사회"], ["sci", "통합과학"]]
+      .map(([k, subject]) => (n(`${k}.pct`) === null ? null : { subject, area: "통합", choice: "통합", pct: n(`${k}.pct`), grade: n(`${k}.grade`) }))
       .filter(Boolean);
     return {
       year: v("year"),
