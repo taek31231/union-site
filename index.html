@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>유니온 · 정시 환산</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <h1>유니온 <small>2027 정시 환산</small></h1>
+    <button id="toggleScores" class="btn ghost" type="button" aria-expanded="true">성적 입력</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="scorePanel" class="card" aria-label="성적 입력">
+    <div class="card-head">
+      <h2>내 수능 성적</h2>
+      <span class="hint">입력한 성적은 이 브라우저에만 저장됩니다.</span>
+    </div>
+    <form id="scoreForm" autocomplete="off">
+      <div class="grid">
+        <fieldset class="area">
+          <legend>국어</legend>
+          <label>선택<select name="korean.choice"><option value="">-</option><option>화작</option><option>언매</option></select></label>
+          <label>표준점수<input name="korean.std" type="number" inputmode="numeric" min="0" max="200"></label>
+          <label>백분위<input name="korean.pct" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>등급<input name="korean.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+        </fieldset>
+        <fieldset class="area">
+          <legend>수학</legend>
+          <label>선택<select name="math.choice"><option value="">-</option><option>확통</option><option>미적</option><option>기하</option></select></label>
+          <label>표준점수<input name="math.std" type="number" inputmode="numeric" min="0" max="200"></label>
+          <label>백분위<input name="math.pct" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>등급<input name="math.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+        </fieldset>
+        <fieldset class="area small">
+          <legend>영어 · 한국사</legend>
+          <label>영어 등급<input name="english.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+          <label>한국사 등급<input name="history.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+        </fieldset>
+        <fieldset class="area">
+          <legend>탐구 1</legend>
+          <label class="wide">과목<select name="inq0.subject" class="subj"></select></label>
+          <label>표준점수<input name="inq0.std" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>백분위<input name="inq0.pct" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>등급<input name="inq0.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+        </fieldset>
+        <fieldset class="area">
+          <legend>탐구 2</legend>
+          <label class="wide">과목<select name="inq1.subject" class="subj"></select></label>
+          <label>표준점수<input name="inq1.std" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>백분위<input name="inq1.pct" type="number" inputmode="numeric" min="0" max="100"></label>
+          <label>등급<input name="inq1.grade" type="number" inputmode="numeric" min="1" max="9"></label>
+        </fieldset>
+      </div>
+      <div class="form-foot">
+        <button type="button" id="clearScores" class="btn ghost">지우기</button>
+        <button type="submit" class="btn primary">환산하기</button>
+      </div>
+    </form>
+  </section>
+
+  <p id="notice" class="notice"></p>
+
+  <section class="card search" aria-label="검색과 필터">
+    <input id="q" type="search" placeholder="대학명 또는 학과명으로 검색 (예: 연세대학교, 컴퓨터, 간호)" aria-label="검색어">
+    <div class="filters">
+      <div class="chips" role="group" aria-label="모집군">
+        <button type="button" class="chip" data-gun="가">가군</button>
+        <button type="button" class="chip" data-gun="나">나군</button>
+        <button type="button" class="chip" data-gun="다">다군</button>
+        <button type="button" class="chip" data-gun="군외">군외</button>
+      </div>
+      <select id="fGroup" aria-label="대학 그룹"><option value="">전체 대학</option></select>
+      <select id="fCatGroup" aria-label="계열"><option value="">전체 계열</option></select>
+      <select id="fCat" aria-label="중분류"><option value="">전체 학과</option></select>
+      <select id="fSort" aria-label="정렬">
+        <option value="univ">대학 순</option>
+        <option value="ratio">만점 대비 비율 높은 순</option>
+        <option value="quota">모집인원 많은 순</option>
+      </select>
+    </div>
+    <div class="toggles">
+      <label class="switch"><input type="checkbox" id="fEligible" checked><span>지원 가능만 보기</span></label>
+      <label class="switch"><input type="checkbox" id="fSpecial"><span>특별전형 포함</span></label>
+    </div>
+  </section>
+
+  <div class="result-head">
+    <span id="count"></span>
+  </div>
+  <ol id="results" class="results"></ol>
+  <button id="more" class="btn ghost more" type="button" hidden>더 보기</button>
+</main>
+
+<footer class="wrap foot">
+  <p>2027학년도 각 대학 정시 모집요강을 기준으로 계산합니다. 최종 지원 전에는 반드시 대학 입학처의 공식 계산기와 요강으로 확인하세요.</p>
+</footer>
+
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
