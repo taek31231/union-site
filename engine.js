@@ -439,8 +439,8 @@
     const detail = [];
     for (const c of cuts) {
       const parts = [];
-      if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 2.5);
-      if (me.std !== null && num(c.std)) parts.push((me.std - c.std) / 4);
+      if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 4);
+      if (me.std !== null && num(c.std)) parts.push((me.std - c.std) / 6);
       if (!parts.length) continue;
       const u = parts.reduce((a, b) => a + b, 0) / parts.length;
       let w = (YEAR_W[c.year] || 0.2) * (c.m || 1) * (c.gd ? 0.7 : 1);
