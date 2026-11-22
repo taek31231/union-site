@@ -171,13 +171,20 @@
     if (!row.u.ct || !row.u.ct.length) return '<span class="of">합격선 자료 없음</span>';
     const v = row.v;
     if (!v) return '<span class="of">국·수·탐 2과목 점수 필요</span>';
-    const lines = v.detail.map((d) => {
-      const parts = [];
-      if (d.pct) parts.push(`백분위합 ${d.pct}${d.dPct !== null ? ` (${d.dPct >= 0 ? "+" : ""}${fmt(d.dPct)})` : ""}`);
-      if (d.std) parts.push(`표준합 ${d.std}${d.dStd !== null ? ` (${d.dStd >= 0 ? "+" : ""}${fmt(d.dStd)})` : ""}`);
-      return `${d.year} ${d.source}: ${parts.join(", ")}`;
-    });
-    return `<span class="tier ${TIER_CLASS[v.tier]}" title="${esc(lines.join("\n"))}">${v.tier}</span>`;
+    return `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>${cutLine(v)}`;
+  }
+
+  // 가장 최근 학년도 합격선(여러 자료면 평균)과 내 점수 차이를 표에 적는다
+  function cutLine(v) {
+    const latest = Math.max(...v.detail.map((d) => d.year));
+    const ds = v.detail.filter((d) => d.year === latest);
+    const avg = (k) => { const x = ds.map((d) => d[k]).filter((n) => typeof n === "number"); return x.length ? x.reduce((a, b) => a + b, 0) / x.length : null; };
+    const sign = (n) => (n >= 0 ? "+" : "") + fmt(n);
+    const parts = [];
+    const std = avg("std"), pct = avg("pct");
+    if (std !== null) parts.push(`표준 ${fmt(std)}${v.me.std !== null ? ` <b>(${sign(v.me.std - std)})</b>` : ""}`);
+    if (pct !== null) parts.push(`백분위 ${fmt(pct)}${v.me.pct !== null ? ` <b>(${sign(v.me.pct - pct)})</b>` : ""}`);
+    return parts.length ? `<div class="cut"><span>${String(latest).slice(2)}학년도 합격선</span>${parts.map((x) => `<span>${x}</span>`).join("")}</div>` : "";
   }
 
   /* ---------- 모의지원 (가·나·다군 하나씩, 이 브라우저에만 저장) ---------- */
