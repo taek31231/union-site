@@ -450,7 +450,8 @@
     }
     if (!wsum) return null;
     const U = usum / wsum;
-    const prob = 1 / (1 + Math.exp(-(U + 0.2)));
+    // 배치표 합격선과 같은 점수 = 적정(약 65%)
+    const prob = 1 / (1 + Math.exp(-(U + 0.62)));
     const tier = TIERS.find((t) => prob >= t.min).name;
     return { prob, tier, me, detail };
   }
