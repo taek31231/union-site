@@ -18,23 +18,26 @@
     return (lo + hi) / 2;
   }
 
+  // N수생 분포: 강한 무리(비율 s)는 δ만큼 위, 나머지는 재학생과 비슷
+  const nCdf = (x, d, s) => s * cdf(x - d) + (1 - s) * cdf(x);
+
   // 상위 top 비율 안의 N수생 비율
-  function nShareTop(a, d, top) {
+  function nShareTop(a, d, top, s = 1) {
     let lo = -8, hi = 10, x = 0;
     for (let i = 0; i < 80; i++) {
       x = (lo + hi) / 2;
-      const f = a * (1 - cdf(x)) + (1 - a) * (1 - cdf(x - d));
+      const f = a * (1 - cdf(x)) + (1 - a) * (1 - nCdf(x, d, s));
       if (f > top) lo = x; else hi = x;
     }
-    return (1 - a) * (1 - cdf(x - d)) / top;
+    return (1 - a) * (1 - nCdf(x, d, s)) / top;
   }
 
   const deltaCache = new Map();
-  function delta(a, target) {
-    const k = `${a}|${target}`;
+  function delta(a, target, s = 1) {
+    const k = `${a}|${target}|${s}`;
     if (deltaCache.has(k)) return deltaCache.get(k);
-    let lo = 0, hi = 5;
-    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (nShareTop(a, m, 0.04) < target) lo = m; else hi = m; }
+    let lo = 0, hi = 8;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (nShareTop(a, m, 0.04, s) < target) lo = m; else hi = m; }
     deltaCache.set(k, (lo + hi) / 2);
     return (lo + hi) / 2;
   }
@@ -70,9 +73,9 @@
       fromPct = Number(s.pct);
       z = inv(Math.min(Math.max(fromPct, 0.25), 99.75) / 100); // 백분위 0·100은 구간 중앙값으로
     } else return null;
-    const a = C.schoolShare;
-    const d = delta(a, C.top1Share[choice] ?? C.top1Share.default);
-    const q = (a * cdf(z) + (1 - a) * cdf(z - d)) * 100;
+    const a = C.schoolShare, sh = C.strongShare ?? 1;
+    const d = delta(a, C.top1Share[choice] ?? C.top1Share.default, sh);
+    const q = (a * cdf(z) + (1 - a) * nCdf(z, d, sh)) * 100;
     const out = Math.round(q * 10) / 10;
     return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut),
       drop: Math.round((fromPct - out) * 10) / 10, fromStd: isNum(s.std) ? Number(s.std) : null, fromPct: isNum(s.pct) ? Number(s.pct) : null };
