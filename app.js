@@ -119,6 +119,9 @@
     { q: "", guns: [], group: "", catGroup: "", cat: "", sort: "univ", eligible: true, special: false, tiers: [] },
     store.get(K("filters")) || {}
   );
+  // 예전 버전에서 잘못 저장된 값 정리(판정 칩을 누르면 빈 군 값이 들어가던 문제)
+  state.guns = (state.guns || []).filter((g) => ["가", "나", "다", "군외"].includes(g));
+  state.tiers = (state.tiers || []).filter((t) => ["안정", "적정", "소신", "위험", "무모", "불가"].includes(t));
   let saved = store.get(K("scores"));
   let student = toStudent(saved);
   let shown = PAGE;
@@ -136,7 +139,7 @@
     $("#fSort").value = state.sort;
     $("#fEligible").checked = state.eligible;
     $("#fSpecial").checked = state.special;
-    for (const b of document.querySelectorAll(".chip")) b.setAttribute("aria-pressed", state.guns.includes(b.dataset.gun));
+    for (const b of document.querySelectorAll(".chip[data-gun]")) b.setAttribute("aria-pressed", state.guns.includes(b.dataset.gun));
   }
 
   function fillCats() {
@@ -339,7 +342,7 @@
     $("#fSort").addEventListener("change", (e) => { state.sort = e.target.value; update(); });
     $("#fEligible").addEventListener("change", (e) => { state.eligible = e.target.checked; update(); });
     $("#fSpecial").addEventListener("change", (e) => { state.special = e.target.checked; update(); });
-    for (const b of document.querySelectorAll(".chip")) {
+    for (const b of document.querySelectorAll(".chip[data-gun]")) {
       b.addEventListener("click", () => {
         const g = b.dataset.gun;
         state.guns = state.guns.includes(g) ? state.guns.filter((x) => x !== g) : [...state.guns, g];
