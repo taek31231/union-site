@@ -45,7 +45,7 @@
         return `탐구 ${areas.join("·") || ""} ${count}과목 필요`;
       }
       if (Array.isArray(iq.mustInclude) && iq.mustInclude.length) {
-        const hit = ok.some((s) => iq.mustInclude.some((m) => s.subject === m || s.subject.replace(/[ⅠⅡ]$/, "") === m.replace(/[ⅠⅡ]$/, "") && (!/[ⅠⅡ]$/.test(m) || s.subject.endsWith(m.slice(-1)))));
+        const hit = ok.some((s) => /^통합/.test(s.subject) || iq.mustInclude.some((m) => s.subject === m || s.subject.replace(/[ⅠⅡ]$/, "") === m.replace(/[ⅠⅡ]$/, "") && (!/[ⅠⅡ]$/.test(m) || s.subject.endsWith(m.slice(-1)))));
         if (!hit) return `탐구에 ${iq.mustInclude.join("·")} 중 포함 필요`;
       }
     }

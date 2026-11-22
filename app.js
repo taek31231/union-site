@@ -1,10 +1,15 @@
-/* 유니온 화면: 성적 입력, 검색·필터, 환산점수 목록 */
+/* uniON 화면: 성적 입력, 검색·필터, 환산점수 목록, 모의지원
+ * body[data-mode]가 "mock"이면 1·2학년 모의지원: 학평 백분위를 입력받아 수능 기준으로 보정한 뒤 같은 엔진으로 계산한다. */
 (function () {
   "use strict";
   const D = window.UNION_DATA;
   const E = window.UnionEngine;
   const $ = (s) => document.querySelector(s);
   const PAGE = 100;
+  const MODE = document.body.dataset.mode === "mock" ? "mock" : "jungsi";
+  const K = (name) => (MODE === "mock" ? `union.mock.${name}` : `union.${name}`);
+  // 1·2학년 희망 계열 → 2027 규칙에 맞춘 가정 선택과목
+  const TRACK = { "자연": { korean: "언매", math: "미적", area: "과탐" }, "인문": { korean: "화작", math: "확통", area: "사탐" } };
   const MED_CATS = new Set(["med", "dent", "kmed", "pharm", "vet"]);
 
   const store = {
@@ -17,12 +22,14 @@
   const catGroup = Object.fromEntries(D.categories.map((c) => [c.code, c.group]));
   const subjArea = {};
   for (const [area, list] of Object.entries(D.exam.inquiry)) for (const s of list) subjArea[s] = area;
+  subjArea["통합사회"] = "사탐"; subjArea["통합과학"] = "과탐";
 
   /* ---------- 성적 입력 ---------- */
 
   function fillSubjects() {
     for (const sel of document.querySelectorAll("select.subj")) {
       let html = '<option value="">-</option>';
+      if (MODE === "mock") html += '<optgroup label="고1 통합"><option>통합사회</option><option>통합과학</option></optgroup>';
       for (const [area, list] of Object.entries(D.exam.inquiry)) {
         html += `<optgroup label="${area}">` + list.map((s) => `<option>${s}</option>`).join("") + "</optgroup>";
       }
@@ -32,6 +39,7 @@
 
   function readForm() {
     const f = new FormData($("#scoreForm"));
+    if (MODE === "mock") return readMock(f);
     const v = (k) => { const x = f.get(k); return x === null || x === "" ? null : x; };
     const n = (k) => { const x = v(k); return x === null ? null : Number(x); };
     const st = {
@@ -47,12 +55,38 @@
     return st;
   }
 
+  function readMock(f) {
+    const v = (k) => { const x = f.get(k); return x === null || x === "" ? null : x; };
+    const n = (k) => { const x = v(k); return x === null ? null : Number(x); };
+    const track = v("track") || "자연", t = TRACK[track];
+    return {
+      year: v("year"), track,
+      korean: { choice: t.korean, pct: n("korean.pct"), grade: n("korean.grade") },
+      math: { choice: t.math, pct: n("math.pct"), grade: n("math.grade") },
+      english: { grade: n("english.grade") },
+      history: { grade: n("history.grade") },
+      inquiry: [0, 1].map((i) => {
+        const subject = v(`inq${i}.subject`);
+        if (!subject) return null;
+        const area = /^통합/.test(subject) ? t.area : subjArea[subject];
+        return { subject, area, pct: n(`inq${i}.pct`), grade: n(`inq${i}.grade`) };
+      }).filter(Boolean),
+    };
+  }
+
+  // 저장된 입력값 → 엔진에 넣을 성적
+  function toStudent(saved) {
+    if (!saved) return null;
+    return MODE === "mock" ? window.UnionCorrection.project(saved, D.correction) : saved;
+  }
+
   function writeForm(st) {
     if (!st) return;
     const set = (k, val) => { const el = $(`[name="${k}"]`); if (el && val !== null && val !== undefined) el.value = val; };
     for (const a of ["korean", "math"]) for (const k of ["choice", "std", "pct", "grade"]) set(`${a}.${k}`, st[a] && st[a][k]);
     set("english.grade", st.english && st.english.grade);
     set("history.grade", st.history && st.history.grade);
+    set("track", st.track); set("year", st.year);
     (st.inquiry || []).forEach((s, i) => { for (const k of ["subject", "std", "pct", "grade"]) set(`inq${i}.${k}`, s[k]); });
   }
 
@@ -60,13 +94,26 @@
     return !!(st && (st.korean.std || st.korean.pct || st.math.std || st.math.pct || st.inquiry.length));
   }
 
+  // 1·2학년: 학평 → 예상 수능 보정 결과 표
+  function renderProjection() {
+    const el = $("#projection");
+    if (!el) return;
+    if (!student || !hasScores(student)) { el.hidden = true; return; }
+    const row = (name, s) => (s && s.pct !== undefined && s.pct !== null
+      ? `<tr><th>${name}</th><td>${s.from}</td><td>${s.pct}<span class="drop"> −${s.drop}</span></td><td>${s.std}</td><td>${s.grade}</td></tr>` : "");
+    el.hidden = false;
+    el.querySelector("tbody").innerHTML = row("국어", student.korean) + row("수학", student.math)
+      + (student.inquiry || []).map((s, i) => row(s.subject, s)).join("");
+  }
+
   /* ---------- 필터 ---------- */
 
   const state = Object.assign(
     { q: "", guns: [], group: "", catGroup: "", cat: "", sort: "univ", eligible: true, special: false, tiers: [] },
-    store.get("union.filters") || {}
+    store.get(K("filters")) || {}
   );
-  let student = store.get("union.scores");
+  let saved = store.get(K("scores"));
+  let student = toStudent(saved);
   let shown = PAGE;
 
   function initFilters() {
@@ -191,7 +238,7 @@
 
   const GUNS = ["가", "나", "다"];
   const unitByKey = new Map(D.units.map((u) => [`${u.u}|${u.i}`, u]));
-  let picks = store.get("union.picks") || {};
+  let picks = store.get(K("picks")) || {};
 
   function pickButton(row) {
     if (!GUNS.includes(row.gun)) return "";
@@ -224,7 +271,7 @@
 
   function setPick(gun, key) {
     if (picks[gun] === key) delete picks[gun]; else picks[gun] = key;
-    store.set("union.picks", picks);
+    store.set(K("picks"), picks);
     renderPicks(); render();
   }
 
@@ -255,7 +302,7 @@
     $("#more").hidden = list.length <= shown;
   }
 
-  function saveFilters() { store.set("union.filters", state); }
+  function saveFilters() { store.set(K("filters"), state); }
   function update() { shown = PAGE; saveFilters(); render(); }
 
   /* ---------- 이벤트 ---------- */
@@ -263,13 +310,15 @@
   function bind() {
     $("#scoreForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      student = readForm();
-      store.set("union.scores", student);
+      saved = readForm();
+      student = toStudent(saved);
+      store.set(K("scores"), saved);
+      renderProjection();
       update(); renderPicks();
       $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     $("#clearScores").addEventListener("click", () => {
-      $("#scoreForm").reset(); student = null; store.del("union.scores"); update();
+      $("#scoreForm").reset(); saved = null; student = null; store.del(K("scores")); renderProjection(); update();
     });
     $("#toggleScores").addEventListener("click", () => {
       const p = $("#scorePanel"); p.hidden = !p.hidden;
@@ -298,7 +347,7 @@
     });
     $("#picks").addEventListener("click", (e) => {
       const b = e.target.closest("button.unpick");
-      if (b) { delete picks[b.dataset.gun]; store.set("union.picks", picks); renderPicks(); render(); }
+      if (b) { delete picks[b.dataset.gun]; store.set(K("picks"), picks); renderPicks(); render(); }
     });
     for (const b of document.querySelectorAll(".tchip")) {
       b.setAttribute("aria-pressed", state.tiers.includes(b.dataset.tier));
@@ -312,11 +361,14 @@
   }
 
   fillSubjects();
-  writeForm(student);
+  renderProjection();
+  writeForm(saved);
   initFilters();
   bind();
   if (D.exam.provisional) {
-    $("#notice").textContent = "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표의 국·수·탐 표준점수 합 합격선과 비교한 참고용입니다.";
+    $("#notice").textContent = MODE === "mock"
+      ? "학평 성적을 N수생이 들어오는 실제 수능 기준으로 보정해 계산합니다. 대학 규칙은 2027학년도 기준이라, 2028학년도 이후 바뀌는 입시 제도는 반영되지 않습니다."
+      : "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표의 국·수·탐 표준점수 합 합격선과 비교한 참고용입니다.";
   }
   if (hasScores(student)) $("#scorePanel").hidden = false;
   renderPicks();
