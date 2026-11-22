@@ -181,3 +181,4 @@ table.proj th:first-child, table.proj td:first-child { text-align: left; }
 .why p { font-size: 13px; color: var(--sub); margin: 8px 0 0; }
 @media (max-width: 560px) { table.proj { font-size: 13px; } table.proj th, table.proj td { padding: 7px 5px; } table.proj .drop { display: block; } }
 .foot .copy { margin-top: 6px; font-size: 12px; color: var(--sub); }
+.form-note { margin: 0 0 12px; }

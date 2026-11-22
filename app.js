@@ -9,7 +9,6 @@
   const MODE = document.body.dataset.mode === "mock" ? "mock" : "jungsi";
   const K = (name) => (MODE === "mock" ? `union.mock.${name}` : `union.${name}`);
   // 1·2학년 희망 계열 → 2027 규칙에 맞춘 가정 선택과목
-  const TRACK = { "자연": { korean: "언매", math: "미적", area: "과탐" }, "인문": { korean: "화작", math: "확통", area: "사탐" } };
   const MED_CATS = new Set(["med", "dent", "kmed", "pharm", "vet"]);
 
   const store = {
@@ -55,22 +54,20 @@
     return st;
   }
 
+  // 2028 수능(2022 개정 교육과정): 국어·수학 공통, 탐구는 통합사회·통합과학 고정
   function readMock(f) {
     const v = (k) => { const x = f.get(k); return x === null || x === "" ? null : x; };
     const n = (k) => { const x = v(k); return x === null ? null : Number(x); };
-    const track = v("track") || "자연", t = TRACK[track];
+    const inq = [["soc", "통합사회", "사탐"], ["sci", "통합과학", "과탐"]]
+      .map(([k, subject, area]) => (n(`${k}.pct`) === null ? null : { subject, area, choice: "통합", pct: n(`${k}.pct`), grade: n(`${k}.grade`) }))
+      .filter(Boolean);
     return {
-      year: v("year"), track,
-      korean: { choice: t.korean, pct: n("korean.pct"), grade: n("korean.grade") },
-      math: { choice: t.math, pct: n("math.pct"), grade: n("math.grade") },
+      year: v("year"),
+      korean: { choice: "공통", pct: n("korean.pct"), grade: n("korean.grade") },
+      math: { choice: "공통", pct: n("math.pct"), grade: n("math.grade") },
       english: { grade: n("english.grade") },
       history: { grade: n("history.grade") },
-      inquiry: [0, 1].map((i) => {
-        const subject = v(`inq${i}.subject`);
-        if (!subject) return null;
-        const area = /^통합/.test(subject) ? t.area : subjArea[subject];
-        return { subject, area, pct: n(`inq${i}.pct`), grade: n(`inq${i}.grade`) };
-      }).filter(Boolean),
+      inquiry: inq,
     };
   }
 
@@ -86,7 +83,8 @@
     for (const a of ["korean", "math"]) for (const k of ["choice", "std", "pct", "grade"]) set(`${a}.${k}`, st[a] && st[a][k]);
     set("english.grade", st.english && st.english.grade);
     set("history.grade", st.history && st.history.grade);
-    set("track", st.track); set("year", st.year);
+    set("year", st.year);
+    if (MODE === "mock") for (const x of st.inquiry || []) { const k = x.subject === "통합사회" ? "soc" : "sci"; set(`${k}.pct`, x.pct); set(`${k}.grade`, x.grade); }
     (st.inquiry || []).forEach((s, i) => { for (const k of ["subject", "std", "pct", "grade"]) set(`inq${i}.${k}`, s[k]); });
   }
 
@@ -104,6 +102,13 @@
     el.hidden = false;
     el.querySelector("tbody").innerHTML = row("국어", student.korean) + row("수학", student.math)
       + (student.inquiry || []).map((s, i) => row(s.subject, s)).join("");
+  }
+
+  // 1·2학년(2028 수능)은 선택과목이 없어 2027 선택과목 조건(미적·과탐 지정 등)을 적용하지 않는다
+  function computeFor(u, univ) {
+    const r = E.compute(u, univ, student, D.exam);
+    if (MODE === "mock") { r.eligible = true; r.reasons = []; }
+    return r;
   }
 
   /* ---------- 필터 ---------- */
@@ -176,7 +181,7 @@
       if (!byGun.size) continue;
       let r = null;
       if (hasScores(student)) {
-        r = E.compute(u, univ, student, D.exam);
+        r = computeFor(u, univ);
         if (state.eligible && !r.eligible) continue;
       }
       const v = r && r.eligible ? E.verdict(student, u.ct) : null;
@@ -255,7 +260,7 @@
       const univ = D.univs[u.u];
       let score = "", tier = "";
       if (hasScores(student)) {
-        const r = E.compute(u, univ, student, D.exam);
+        const r = computeFor(u, univ);
         if (!r.eligible) tier = '<span class="tier t7">지원불가</span>';
         else {
           const v = E.verdict(student, u.ct);
@@ -362,12 +367,13 @@
 
   fillSubjects();
   renderProjection();
+  if (MODE === "mock") { state.eligible = false; const t = $("#fEligible"); if (t) t.closest("label").style.display = "none"; }
   writeForm(saved);
   initFilters();
   bind();
   if (D.exam.provisional) {
     $("#notice").textContent = MODE === "mock"
-      ? "학평 성적을 N수생이 들어오는 실제 수능 기준으로 보정해 계산합니다. 대학 규칙은 2027학년도 기준이라, 2028학년도 이후 바뀌는 입시 제도는 반영되지 않습니다."
+      ? "학평 성적을 N수생이 들어오는 실제 수능 기준으로 보정해 계산합니다. 대학별 반영 비율은 2028학년도 요강이 나오기 전이라 2027학년도 기준이며, 선택과목 조건은 적용하지 않습니다."
       : "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표의 국·수·탐 표준점수 합 합격선과 비교한 참고용입니다.";
   }
   if (hasScores(student)) $("#scorePanel").hidden = false;

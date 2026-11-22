@@ -72,7 +72,7 @@
     const kp = projectPct(k.pct, "korean", k.choice, C);
     const mp = projectPct(m.pct, "math", m.choice, C);
     const inq = (mock.inquiry || []).map((s) => {
-      const r = projectPct(s.pct, "inquiry", s.area, C);
+      const r = projectPct(s.pct, "inquiry", s.choice || s.area, C);
       return r ? { subject: s.subject, area: s.area, std: r.std, pct: r.pct, grade: r.grade, from: s.pct, drop: r.drop } : null;
     }).filter(Boolean);
     return {
