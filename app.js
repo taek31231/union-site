@@ -63,7 +63,7 @@
   /* ---------- 필터 ---------- */
 
   const state = Object.assign(
-    { q: "", guns: [], group: "", catGroup: "", cat: "", sort: "univ", eligible: true, special: false },
+    { q: "", guns: [], group: "", catGroup: "", cat: "", sort: "univ", eligible: true, special: false, tiers: [] },
     store.get("union.filters") || {}
   );
   let student = store.get("union.scores");
@@ -132,9 +132,14 @@
         r = E.compute(u, univ, student, D.exam);
         if (state.eligible && !r.eligible) continue;
       }
-      for (const [g, x] of byGun) out.push({ u, univ, gun: g, quota: x.n, tracks: x.tracks, r });
+      const v = r && r.eligible ? E.verdict(student, u.ct) : null;
+      if (state.tiers.length && !(v && state.tiers.includes(v.tier))) continue;
+      for (const [g, x] of byGun) out.push({ u, univ, gun: g, quota: x.n, tracks: x.tracks, r, v });
     }
-    if (state.sort === "ratio") {
+    if (state.sort === "verdict") {
+      const pr = (row) => (row.v ? row.v.prob : -1);
+      out.sort((a, b) => pr(b) - pr(a));
+    } else if (state.sort === "ratio") {
       const ratio = (row) => (row.r && row.r.score !== null ? row.r.score / (perfect(row.u) || 1) : -1);
       out.sort((a, b) => ratio(b) - ratio(a));
     } else if (state.sort === "quota") out.sort((a, b) => b.quota - a.quota);
@@ -158,9 +163,62 @@
       <div class="bar" aria-hidden="true"><i style="width:${(ratio * 100).toFixed(1)}%"></i></div>`;
   }
 
+  const TIER_CLASS = { "안정": "t1", "적정": "t2", "소신": "t3", "위험": "t4", "무모": "t5", "불가": "t6" };
+
   function verdictCell(row) {
-    if (row.r && !row.r.eligible) return `<span class="tag bad">지원 불가</span><span class="of"> ${esc(row.r.reasons.join(", "))}</span>`;
-    return '<span title="입결·배치표 자료를 넣은 뒤 7단계 판정을 제공합니다">판정 준비 중</span>';
+    if (row.r && !row.r.eligible) return `<span class="tier t7">지원불가</span><div class="of">${esc(row.r.reasons.join(", "))}</div>`;
+    if (!row.r) return "";
+    if (!row.u.ct || !row.u.ct.length) return '<span class="of">합격선 자료 없음</span>';
+    const v = row.v;
+    if (!v) return '<span class="of">국·수·탐 2과목 점수 필요</span>';
+    const lines = v.detail.map((d) => {
+      const parts = [];
+      if (d.pct) parts.push(`백분위합 ${d.pct}${d.dPct !== null ? ` (${d.dPct >= 0 ? "+" : ""}${fmt(d.dPct)})` : ""}`);
+      if (d.std) parts.push(`표준합 ${d.std}${d.dStd !== null ? ` (${d.dStd >= 0 ? "+" : ""}${fmt(d.dStd)})` : ""}`);
+      return `${d.year} ${d.source}: ${parts.join(", ")}`;
+    });
+    return `<span class="tier ${TIER_CLASS[v.tier]}" title="${esc(lines.join("\n"))}">${v.tier}</span>`;
+  }
+
+  /* ---------- 모의지원 (가·나·다군 하나씩, 이 브라우저에만 저장) ---------- */
+
+  const GUNS = ["가", "나", "다"];
+  const unitByKey = new Map(D.units.map((u) => [`${u.u}|${u.i}`, u]));
+  let picks = store.get("union.picks") || {};
+
+  function pickButton(row) {
+    if (!GUNS.includes(row.gun)) return "";
+    const key = `${row.u.u}|${row.u.i}`;
+    const on = picks[row.gun] === key;
+    return `<button type="button" class="pick${on ? " on" : ""}" data-gun="${row.gun}" data-key="${key}" aria-pressed="${on}">${on ? "담김" : row.gun + "군 담기"}</button>`;
+  }
+
+  function renderPicks() {
+    const el = $("#picks");
+    el.innerHTML = GUNS.map((g) => {
+      const u = unitByKey.get(picks[g]);
+      if (!u) return `<div class="slot empty"><div class="slot-gun">${g}군</div><div class="of">검색 결과에서 "${g}군 담기"를 누르세요</div></div>`;
+      const univ = D.univs[u.u];
+      let score = "", tier = "";
+      if (hasScores(student)) {
+        const r = E.compute(u, univ, student, D.exam);
+        if (!r.eligible) tier = '<span class="tier t7">지원불가</span>';
+        else {
+          const v = E.verdict(student, u.ct);
+          if (v) tier = `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>`;
+          if (r.score !== null) score = `<span class="of">환산 ${fmt(r.score)}</span>`;
+        }
+      }
+      return `<div class="slot"><div class="slot-gun">${g}군</div>
+        <div class="u-name">${esc(univ.name)}</div><div class="u-unit">${esc(u.n)}</div>
+        <div class="slot-foot">${tier} ${score}<button type="button" class="unpick" data-gun="${g}">빼기</button></div></div>`;
+    }).join("");
+  }
+
+  function setPick(gun, key) {
+    if (picks[gun] === key) delete picks[gun]; else picks[gun] = key;
+    store.set("union.picks", picks);
+    renderPicks(); render();
   }
 
   function render() {
@@ -184,7 +242,7 @@
         <span class="gun">${esc(row.gun)}</span>
         <span class="quota">${row.quota}</span>
         <div class="score">${scoreCell(row)}</div>
-        <div class="verdict">${verdictCell(row)}</div>
+        <div class="verdict">${verdictCell(row)}${pickButton(row)}</div>
       </li>`;
     }).join("");
     $("#more").hidden = list.length <= shown;
@@ -200,7 +258,7 @@
       e.preventDefault();
       student = readForm();
       store.set("union.scores", student);
-      update();
+      update(); renderPicks();
       $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     $("#clearScores").addEventListener("click", () => {
@@ -227,6 +285,23 @@
       });
     }
     $("#more").addEventListener("click", () => { shown += PAGE; render(); });
+    $("#results").addEventListener("click", (e) => {
+      const b = e.target.closest("button.pick");
+      if (b) setPick(b.dataset.gun, b.dataset.key);
+    });
+    $("#picks").addEventListener("click", (e) => {
+      const b = e.target.closest("button.unpick");
+      if (b) { delete picks[b.dataset.gun]; store.set("union.picks", picks); renderPicks(); render(); }
+    });
+    for (const b of document.querySelectorAll(".tchip")) {
+      b.setAttribute("aria-pressed", state.tiers.includes(b.dataset.tier));
+      b.addEventListener("click", () => {
+        const t = b.dataset.tier;
+        state.tiers = state.tiers.includes(t) ? state.tiers.filter((x) => x !== t) : [...state.tiers, t];
+        b.setAttribute("aria-pressed", state.tiers.includes(t));
+        update();
+      });
+    }
   }
 
   fillSubjects();
@@ -234,8 +309,9 @@
   initFilters();
   bind();
   if (D.exam.provisional) {
-    $("#notice").textContent = "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 환산점수는 추정치이며, 합격 판정은 입결 자료를 넣은 뒤 제공됩니다.";
+    $("#notice").textContent = "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표·지원참고표의 국·수·탐 합격선과 비교한 참고용이며, 최근 자료일수록 크게 반영합니다.";
   }
   if (hasScores(student)) $("#scorePanel").hidden = false;
+  renderPicks();
   render();
 })();

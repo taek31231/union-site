@@ -101,3 +101,24 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
   fieldset.area { grid-template-columns: repeat(2, 1fr); }
 }
 @media (min-width: 721px) { .row .meta { display: none; } }
+
+.chips.tiers { margin-top: 10px; }
+.tier { display: inline-block; font-size: 13px; font-weight: 700; border-radius: 6px; padding: 2px 8px; color: #fff; cursor: help; }
+.tier.t1 { background: #1a7f4b; } .tier.t2 { background: #2f9e5c; } .tier.t3 { background: #2456d6; }
+.tier.t4 { background: #c27c0e; } .tier.t5 { background: #c2410c; } .tier.t6 { background: #7a1f1f; }
+.tier.t7 { background: transparent; color: var(--bad); border: 1px solid currentColor; }
+.verdict .of { color: var(--sub); font-size: 12px; }
+
+.slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.slot { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.slot.empty { border-style: dashed; color: var(--sub); }
+.slot-gun { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 2px; }
+.slot-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.slot .of { color: var(--sub); font-size: 12px; }
+.unpick { margin-left: auto; font: inherit; font-size: 12px; background: none; border: 0; color: var(--sub); cursor: pointer; text-decoration: underline; padding: 0; }
+.pick { display: block; margin: 6px 0 0 auto; font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+.pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (max-width: 720px) {
+  .slots { grid-template-columns: 1fr; }
+  .pick { display: inline-block; margin: 0 0 0 8px; }
+}

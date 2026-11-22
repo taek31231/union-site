@@ -79,14 +79,31 @@
       <select id="fCat" aria-label="중분류"><option value="">전체 학과</option></select>
       <select id="fSort" aria-label="정렬">
         <option value="univ">대학 순</option>
+        <option value="verdict">판정 좋은 순</option>
         <option value="ratio">만점 대비 비율 높은 순</option>
         <option value="quota">모집인원 많은 순</option>
       </select>
+    </div>
+    <div class="chips tiers" role="group" aria-label="판정">
+      <button type="button" class="chip tchip" data-tier="안정">안정</button>
+      <button type="button" class="chip tchip" data-tier="적정">적정</button>
+      <button type="button" class="chip tchip" data-tier="소신">소신</button>
+      <button type="button" class="chip tchip" data-tier="위험">위험</button>
+      <button type="button" class="chip tchip" data-tier="무모">무모</button>
+      <button type="button" class="chip tchip" data-tier="불가">불가</button>
     </div>
     <div class="toggles">
       <label class="switch"><input type="checkbox" id="fEligible" checked><span>지원 가능만 보기</span></label>
       <label class="switch"><input type="checkbox" id="fSpecial"><span>특별전형 포함</span></label>
     </div>
+  </section>
+
+  <section class="card mock" aria-label="모의지원">
+    <div class="card-head">
+      <h2>모의지원</h2>
+      <span class="hint">군마다 하나씩 담아 비교합니다. 이 브라우저에만 저장되고 다른 학생에게는 보이지 않습니다.</span>
+    </div>
+    <div id="picks" class="slots"></div>
   </section>
 
   <div class="result-head">

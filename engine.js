@@ -408,7 +408,54 @@
     return best;
   }
 
-  const api = { compute, eligibility, perfectScore, AREAS };
+  /* ---------- 합격 판정 ----------
+   * cuts: 배치표·지원참고표에서 연결한 기준선 [{year, kind, std, pct, m(이름 일치도), gd(군 변경)}]
+   * 학생의 국+수+탐2 표준점수 합·백분위 합과 비교해 합격 가능성(대략)과 7단계를 낸다.
+   */
+  const TIERS = [
+    { min: 0.75, name: "안정" }, { min: 0.60, name: "적정" }, { min: 0.50, name: "소신" },
+    { min: 0.40, name: "위험" }, { min: 0.25, name: "무모" }, { min: 0, name: "불가" },
+  ];
+  const YEAR_W = { 2026: 1, 2025: 0.7, 2024: 0.45, 2023: 0.3 };
+
+  function sums(st) {
+    const k = st.korean || {}, m = st.math || {};
+    const inq = (st.inquiry || []).filter((x) => x && x.subject);
+    const two = (key) => {
+      const v = inq.map((x) => num(x[key])).filter((x) => x !== null).sort((a, b) => b - a);
+      return v.length >= 2 ? v[0] + v[1] : null;
+    };
+    // 배치표 기준: 표준점수는 국+수+탐 2과목 합(600 척도), 백분위는 국+수+탐 2과목 평균(300 척도)
+    const tp = two("pct");
+    const s = [num(k.std), num(m.std), two("std")], p = [num(k.pct), num(m.pct), tp === null ? null : tp / 2];
+    return { std: s.includes(null) ? null : s[0] + s[1] + s[2], pct: p.includes(null) ? null : p[0] + p[1] + p[2] };
+  }
+
+  function verdict(student, cuts) {
+    if (!cuts || !cuts.length) return null;
+    const me = sums(student);
+    if (me.std === null && me.pct === null) return null;
+    let wsum = 0, usum = 0;
+    const detail = [];
+    for (const c of cuts) {
+      const parts = [];
+      if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 2.5);
+      if (me.std !== null && num(c.std)) parts.push((me.std - c.std) / 4);
+      if (!parts.length) continue;
+      const u = parts.reduce((a, b) => a + b, 0) / parts.length;
+      let w = (YEAR_W[c.year] || 0.2) * (c.m || 1) * (c.gd ? 0.7 : 1);
+      if (c.kind === "가채점") w *= 0.5;
+      wsum += w; usum += w * u;
+      detail.push({ year: c.year, source: c.source, std: c.std, pct: c.pct, dStd: me.std !== null && num(c.std) ? me.std - c.std : null, dPct: me.pct !== null && num(c.pct) ? me.pct - c.pct : null });
+    }
+    if (!wsum) return null;
+    const U = usum / wsum;
+    const prob = 1 / (1 + Math.exp(-(U + 0.2)));
+    const tier = TIERS.find((t) => prob >= t.min).name;
+    return { prob, tier, me, detail };
+  }
+
+  const api = { compute, eligibility, perfectScore, verdict, sums, TIERS, AREAS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.UnionEngine = api;
 })(typeof window !== "undefined" ? window : globalThis);
