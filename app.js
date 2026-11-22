@@ -182,8 +182,8 @@
     const sign = (n) => (n >= 0 ? "+" : "") + fmt(n);
     const parts = [];
     const std = avg("std"), pct = avg("pct");
-    if (std !== null) parts.push(`표준 ${fmt(std)}${v.me.std !== null ? ` <b>(${sign(v.me.std - std)})</b>` : ""}`);
-    if (pct !== null) parts.push(`백분위 ${fmt(pct)}${v.me.pct !== null ? ` <b>(${sign(v.me.pct - pct)})</b>` : ""}`);
+    if (std !== null && v.me.std !== null) parts.push(`표준합 ${fmt(std)} <b>(${sign(v.me.std - std)})</b>`);
+    else if (pct !== null) parts.push(`백분위합 ${fmt(pct)}${v.me.pct !== null ? ` <b>(${sign(v.me.pct - pct)})</b>` : ""}`);
     return parts.length ? `<div class="cut"><span>${String(latest).slice(2)}학년도 합격선</span>${parts.map((x) => `<span>${x}</span>`).join("")}</div>` : "";
   }
 
@@ -316,7 +316,7 @@
   initFilters();
   bind();
   if (D.exam.provisional) {
-    $("#notice").textContent = "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표·지원참고표의 국·수·탐 합격선과 비교한 참고용이며, 최근 자료일수록 크게 반영합니다.";
+    $("#notice").textContent = "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표의 국·수·탐 표준점수 합 합격선과 비교한 참고용입니다.";
   }
   if (hasScores(student)) $("#scorePanel").hidden = false;
   renderPicks();

@@ -438,9 +438,10 @@
     let wsum = 0, usum = 0;
     const detail = [];
     for (const c of cuts) {
+      // 표준점수 합 기준. 표준합이 없을 때만 백분위 합으로 대신한다.
       const parts = [];
-      if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 4);
       if (me.std !== null && num(c.std)) parts.push((me.std - c.std) / 6);
+      else if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 4);
       if (!parts.length) continue;
       const u = parts.reduce((a, b) => a + b, 0) / parts.length;
       let w = (YEAR_W[c.year] || 0.2) * (c.m || 1) * (c.gd ? 0.7 : 1);
