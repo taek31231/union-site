@@ -53,38 +53,51 @@
     return 9;
   }
 
-  // 학평 백분위 하나 → {pct, std, grade, drop}
-  function projectPct(pct, kind, choice, C) {
-    if (pct === null || pct === undefined || pct === "") return null;
+  const isNum = (v) => v !== null && v !== undefined && v !== "" && isFinite(Number(v));
+
+  // 학평 성적 하나 → {pct, std, grade, drop}
+  // 학평 표준점수가 있으면 표준점수로, 없으면 백분위로 학평 안에서의 위치(재학생 기준)를 구한다.
+  function projectScore(s, kind, choice, C) {
+    if (!s) return null;
+    let z, fromPct;
+    if (isNum(s.std)) {
+      // 실제 점수 분포는 위쪽이 막혀 있어 정규분포 공식((표점−100)/20)은 상위권을 낮게 잡는다.
+      // 그래서 표준점수→백분위 대응표를 거꾸로 써서 학평 안에서의 백분위를 구한다.
+      const p = interp(C.pctToStd[kind].map(([x, y]) => [y, x]), Number(s.std));
+      fromPct = isNum(s.pct) ? Number(s.pct) : Math.round(p * 10) / 10;
+      z = inv(Math.min(Math.max(p, 0.25), 99.75) / 100);
+    } else if (isNum(s.pct)) {
+      fromPct = Number(s.pct);
+      z = inv(Math.min(Math.max(fromPct, 0.25), 99.75) / 100); // 백분위 0·100은 구간 중앙값으로
+    } else return null;
     const a = C.schoolShare;
-    const target = C.top1Share[choice] ?? C.top1Share.default;
-    const d = delta(a, target);
-    const p = Math.min(Math.max(Number(pct), 0.25), 99.75) / 100; // 백분위 0·100은 구간 중앙값으로
-    const z = inv(p);
+    const d = delta(a, C.top1Share[choice] ?? C.top1Share.default);
     const q = (a * cdf(z) + (1 - a) * cdf(z - d)) * 100;
     const out = Math.round(q * 10) / 10;
-    return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut), drop: Math.round((Number(pct) - out) * 10) / 10 };
+    return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut),
+      drop: Math.round((fromPct - out) * 10) / 10, fromStd: isNum(s.std) ? Number(s.std) : null, fromPct: isNum(s.pct) ? Number(s.pct) : null };
   }
+
+  function projectPct(pct, kind, choice, C) { return projectScore({ pct }, kind, choice, C); }
 
   // 학평 성적 → 엔진이 쓰는 수능 성적 형식
   function project(mock, C) {
     const k = mock.korean || {}, m = mock.math || {};
-    const kp = projectPct(k.pct, "korean", k.choice, C);
-    const mp = projectPct(m.pct, "math", m.choice, C);
+    const wrap = (src, r) => (r ? { choice: src.choice, std: r.std, pct: r.pct, grade: r.grade, fromStd: r.fromStd, fromPct: r.fromPct, drop: r.drop } : { choice: src.choice });
     const inq = (mock.inquiry || []).map((s) => {
-      const r = projectPct(s.pct, "inquiry", s.choice || s.area, C);
-      return r ? { subject: s.subject, area: s.area, std: r.std, pct: r.pct, grade: r.grade, from: s.pct, drop: r.drop } : null;
+      const r = projectScore(s, "inquiry", s.choice || s.area, C);
+      return r ? Object.assign(wrap(s, r), { subject: s.subject, area: s.area }) : null;
     }).filter(Boolean);
     return {
-      korean: kp ? { choice: k.choice, std: kp.std, pct: kp.pct, grade: kp.grade, from: k.pct, drop: kp.drop } : { choice: k.choice },
-      math: mp ? { choice: m.choice, std: mp.std, pct: mp.pct, grade: mp.grade, from: m.pct, drop: mp.drop } : { choice: m.choice },
+      korean: wrap(k, projectScore(k, "korean", k.choice, C)),
+      math: wrap(m, projectScore(m, "math", m.choice, C)),
       english: { grade: mock.english && mock.english.grade },
       history: { grade: mock.history && mock.history.grade },
       inquiry: inq,
     };
   }
 
-  const api = { project, projectPct, nShareTop, delta };
+  const api = { project, projectPct, projectScore, nShareTop, delta };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.UnionCorrection = api;
 })(typeof window !== "undefined" ? window : globalThis);

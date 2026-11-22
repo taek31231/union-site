@@ -60,12 +60,13 @@
     const n = (k) => { const x = v(k); return x === null ? null : Number(x); };
     // 모두 같은 과목을 보므로 사탐·과탐 구분이 없고, 과탐·사탐 가산점도 붙지 않는다(area "통합")
     const inq = [["soc", "통합사회"], ["sci", "통합과학"]]
-      .map(([k, subject]) => (n(`${k}.pct`) === null ? null : { subject, area: "통합", choice: "통합", pct: n(`${k}.pct`), grade: n(`${k}.grade`) }))
+      .map(([k, subject]) => (n(`${k}.pct`) === null && n(`${k}.std`) === null ? null
+        : { subject, area: "통합", choice: "통합", std: n(`${k}.std`), pct: n(`${k}.pct`), grade: n(`${k}.grade`) }))
       .filter(Boolean);
     return {
       year: v("year"),
-      korean: { choice: "공통", pct: n("korean.pct"), grade: n("korean.grade") },
-      math: { choice: "공통", pct: n("math.pct"), grade: n("math.grade") },
+      korean: { choice: "공통", std: n("korean.std"), pct: n("korean.pct"), grade: n("korean.grade") },
+      math: { choice: "공통", std: n("math.std"), pct: n("math.pct"), grade: n("math.grade") },
       english: { grade: n("english.grade") },
       history: { grade: n("history.grade") },
       inquiry: inq,
@@ -85,7 +86,7 @@
     set("english.grade", st.english && st.english.grade);
     set("history.grade", st.history && st.history.grade);
     set("year", st.year);
-    if (MODE === "mock") for (const x of st.inquiry || []) { const k = x.subject === "통합사회" ? "soc" : "sci"; set(`${k}.pct`, x.pct); set(`${k}.grade`, x.grade); }
+    if (MODE === "mock") for (const x of st.inquiry || []) { const k = x.subject === "통합사회" ? "soc" : "sci"; set(`${k}.std`, x.std); set(`${k}.pct`, x.pct); set(`${k}.grade`, x.grade); }
     (st.inquiry || []).forEach((s, i) => { for (const k of ["subject", "std", "pct", "grade"]) set(`inq${i}.${k}`, s[k]); });
   }
 
@@ -99,7 +100,7 @@
     if (!el) return;
     if (!student || !hasScores(student)) { el.hidden = true; return; }
     const row = (name, s) => (s && s.pct !== undefined && s.pct !== null
-      ? `<tr><th>${name}</th><td>${s.from}</td><td>${s.pct}<span class="drop"> −${s.drop}</span></td><td>${s.std}</td><td>${s.grade}</td></tr>` : "");
+      ? `<tr><th>${name}</th><td>${s.fromStd ?? "-"}</td><td>${s.fromPct ?? "-"}</td><td>${s.pct}<span class="drop"> ${s.drop >= 0 ? "−" + s.drop : "+" + (-s.drop)}</span></td><td>${s.std}</td><td>${s.grade}</td></tr>` : "");
     el.hidden = false;
     el.querySelector("tbody").innerHTML = row("국어", student.korean) + row("수학", student.math)
       + (student.inquiry || []).map((s, i) => row(s.subject, s)).join("");

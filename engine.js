@@ -435,19 +435,26 @@
     if (!cuts || !cuts.length) return null;
     const me = sums(student);
     if (me.std === null && me.pct === null) return null;
-    let wsum = 0, usum = 0;
+    // 1) 같은 학년도 안에서 자료(회사)별 차이를 평균  2) 학년도별 가중치로 평균
+    //    (자료가 여러 개인 학년도가 더 크게 반영되지 않도록)
+    const byYear = new Map();
     const detail = [];
     for (const c of cuts) {
       // 표준점수 합 기준. 표준합이 없을 때만 백분위 합으로 대신한다.
-      const parts = [];
-      if (me.std !== null && num(c.std)) parts.push((me.std - c.std) / 6);
-      else if (me.pct !== null && num(c.pct)) parts.push((me.pct - c.pct) / 4);
-      if (!parts.length) continue;
-      const u = parts.reduce((a, b) => a + b, 0) / parts.length;
-      let w = (YEAR_W[c.year] || 0.2) * (c.m || 1) * (c.gd ? 0.7 : 1);
+      let u = null;
+      if (me.std !== null && num(c.std)) u = (me.std - c.std) / 6;
+      else if (me.pct !== null && num(c.pct)) u = (me.pct - c.pct) / 4;
+      if (u === null) continue;
+      let w = (c.m || 1) * (c.gd ? 0.7 : 1);
       if (c.kind === "가채점") w *= 0.5;
-      wsum += w; usum += w * u;
+      const y = byYear.get(c.year) || { w: 0, u: 0 };
+      y.w += w; y.u += w * u; byYear.set(c.year, y);
       detail.push({ year: c.year, source: c.source, std: c.std, pct: c.pct, dStd: me.std !== null && num(c.std) ? me.std - c.std : null, dPct: me.pct !== null && num(c.pct) ? me.pct - c.pct : null });
+    }
+    let wsum = 0, usum = 0;
+    for (const [year, y] of byYear) {
+      const yw = (YEAR_W[year] || 0.2) * Math.min(1, y.w);
+      wsum += yw; usum += yw * (y.u / y.w);
     }
     if (!wsum) return null;
     const U = usum / wsum;
