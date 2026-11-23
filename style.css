@@ -191,3 +191,6 @@ fieldset.area.three3 { grid-template-columns: repeat(3, 1fr); }
 .legend-home h2 { font-size: 16px; }
 .legend-home .hint { display: block; margin: 8px 0 0; }
 .tiers-legend div:last-child { grid-column: 1 / -1; }
+.tiers-legend { grid-template-columns: 1fr; gap: 10px; }
+.tiers-legend div:last-child { grid-column: auto; }
+.tiers-legend dd { line-height: 1.5; }
