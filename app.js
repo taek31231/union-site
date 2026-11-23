@@ -263,19 +263,19 @@
       const u = unitByKey.get(picks[g]);
       if (!u) return `<div class="slot empty"><div class="slot-gun">${g}군</div><div class="of">검색 결과에서 "${g}군 담기"를 누르세요</div></div>`;
       const univ = D.univs[u.u];
-      let score = "", tier = "";
+      let score = "", tier = "", cut = "";
       if (hasScores(student)) {
         const r = computeFor(u, univ);
         if (!r.eligible) tier = '<span class="tier t7">지원불가</span>';
         else {
           const v = E.verdict(student, u.ct);
-          if (v) tier = `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>`;
+          if (v) { tier = `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>`; cut = cutLine(v).replace('class="cut"', 'class="cut slot-cut"'); }
           if (r.score !== null) score = `<span class="of">환산 ${fmt(r.score)}</span>`;
         }
       }
       return `<div class="slot"><div class="slot-gun">${g}군</div>
         <div class="u-name">${esc(univ.name)}${u.cp ? ` <span class="tag camp">${esc(u.cp)}</span>` : ""}</div><div class="u-unit">${esc(u.n)}</div>
-        <div class="slot-foot">${tier} ${score}<button type="button" class="unpick" data-gun="${g}">빼기</button></div></div>`;
+        <div class="slot-foot">${tier} ${score}<button type="button" class="unpick" data-gun="${g}">빼기</button></div>${cut}</div>`;
     }).join("");
   }
 
