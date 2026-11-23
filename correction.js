@@ -70,24 +70,24 @@
   const isNum = (v) => v !== null && v !== undefined && v !== "" && isFinite(Number(v));
 
   // 학평 성적 하나 → {pct, std, grade, drop}
-  // 학평 표준점수가 있으면 표준점수로, 없으면 백분위로 학평 안에서의 위치(재학생 기준)를 구한다.
+  // 학평 백분위가 있으면 반드시 백분위로 계산한다(그 시험 안에서의 실제 위치).
+  // 학평 표준점수는 재학생만으로 낸 점수이고 시험마다 분포가 달라 수능 대응표로 바꾸면 어긋나므로,
+  // 백분위가 없을 때만 대신 쓴다(추정 표시).
   function projectScore(s, kind, choice, C) {
     if (!s) return null;
-    let z, fromPct;
-    if (isNum(s.std)) {
-      // 실제 점수 분포는 위쪽이 막혀 있어 정규분포 공식((표점−100)/20)은 상위권을 낮게 잡는다.
-      // 그래서 표준점수→백분위 대응표를 거꾸로 써서 학평 안에서의 백분위를 구한다.
-      const p = interp(C.pctToStd[kind].map(([x, y]) => [y, x]), Number(s.std));
-      fromPct = isNum(s.pct) ? Number(s.pct) : Math.round(p * 10) / 10;
-      z = inv(Math.min(Math.max(p, 0.25), 99.75) / 100);
-    } else if (isNum(s.pct)) {
+    let z, fromPct, viaStd = false;
+    if (isNum(s.pct)) {
       fromPct = Number(s.pct);
       z = inv(Math.min(Math.max(fromPct, 0.25), 99.75) / 100); // 백분위 0·100은 구간 중앙값으로
+    } else if (isNum(s.std)) {
+      const p = interp(C.pctToStd[kind].map(([x, y]) => [y, x]), Number(s.std));
+      fromPct = Math.round(p * 10) / 10; viaStd = true;
+      z = inv(Math.min(Math.max(p, 0.25), 99.75) / 100);
     } else return null;
     const q = toCsat(z, C) * 100;
     const out = Math.round(q * 10) / 10;
     return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut),
-      drop: Math.round((fromPct - out) * 10) / 10, fromStd: isNum(s.std) ? Number(s.std) : null, fromPct: isNum(s.pct) ? Number(s.pct) : null };
+      drop: Math.round((fromPct - out) * 10) / 10, fromStd: isNum(s.std) ? Number(s.std) : null, fromPct, viaStd };
   }
 
   function projectPct(pct, kind, choice, C) { return projectScore({ pct }, kind, choice, C); }
@@ -95,7 +95,7 @@
   // 학평 성적 → 엔진이 쓰는 수능 성적 형식
   function project(mock, C) {
     const k = mock.korean || {}, m = mock.math || {};
-    const wrap = (src, r) => (r ? { choice: src.choice, std: r.std, pct: r.pct, grade: r.grade, fromStd: r.fromStd, fromPct: r.fromPct, drop: r.drop } : { choice: src.choice });
+    const wrap = (src, r) => (r ? { choice: src.choice, std: r.std, pct: r.pct, grade: r.grade, fromStd: r.fromStd, fromPct: r.fromPct, viaStd: r.viaStd, drop: r.drop } : { choice: src.choice });
     const inq = (mock.inquiry || []).map((s) => {
       const r = projectScore(s, "inquiry", s.choice || s.area, C);
       return r ? Object.assign(wrap(s, r), { subject: s.subject, area: s.area }) : null;

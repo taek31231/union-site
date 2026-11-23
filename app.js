@@ -100,7 +100,7 @@
     if (!el) return;
     if (!student || !hasScores(student)) { el.hidden = true; return; }
     const row = (name, s) => (s && s.pct !== undefined && s.pct !== null
-      ? `<tr><th>${name}</th><td>${s.fromStd ?? "-"}</td><td>${s.fromPct ?? "-"}</td><td>${s.pct}<span class="drop"> ${s.drop >= 0 ? "−" + s.drop : "+" + (-s.drop)}</span></td><td>${s.std}</td><td>${s.grade}</td></tr>` : "");
+      ? `<tr><th>${name}</th><td>${s.fromStd ?? "-"}</td><td>${s.viaStd ? `<span class="est" title="백분위를 넣지 않아 표준점수로 추정">약 ${s.fromPct}</span>` : (s.fromPct ?? "-")}</td><td>${s.pct}<span class="drop"> ${s.drop >= 0 ? "−" + s.drop : "+" + (-s.drop)}</span></td><td>${s.std}</td><td>${s.grade}</td></tr>` : "");
     el.hidden = false;
     el.querySelector("tbody").innerHTML = row("국어", student.korean) + row("수학", student.math)
       + (student.inquiry || []).map((s, i) => row(s.subject, s)).join("");
