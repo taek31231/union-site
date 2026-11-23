@@ -188,3 +188,6 @@ fieldset.area.three3 { grid-template-columns: repeat(3, 1fr); }
 .proj-note { margin: 8px 0 0; }
 .tag.camp { background: var(--warn-soft); color: var(--warn); font-weight: 700; vertical-align: 2px; }
 .slot-cut { margin-top: 6px; } .slot-cut span { display: inline; margin-right: 8px; }
+.legend-home h2 { font-size: 16px; }
+.legend-home .hint { display: block; margin: 8px 0 0; }
+.tiers-legend div:last-child { grid-column: 1 / -1; }
