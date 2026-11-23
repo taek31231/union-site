@@ -42,6 +42,17 @@
     return (lo + hi) / 2;
   }
 
+  // 재학생 기준 z → 수능 전체에서의 누적 비율(평가원 분포에 맞춘 혼합 모델)
+  function toCsat(z, C) {
+    const M = C.model;
+    if (!M) { // 예전 형식
+      const a = C.schoolShare, d = delta(a, C.top1Share.default ?? 0.6, C.strongShare ?? 1);
+      return a * cdf(z) + (1 - a) * nCdf(z, d, C.strongShare ?? 1);
+    }
+    const n = (1 - M.eliteShare) * cdf((z - M.mu) / M.sd) + M.eliteShare * cdf((z - M.eliteMu) / M.eliteSd);
+    return M.schoolShare * cdf(z) + (1 - M.schoolShare) * n;
+  }
+
   function interp(table, x) {
     if (x <= table[0][0]) return table[0][1];
     for (let i = 1; i < table.length; i++) {
@@ -73,9 +84,7 @@
       fromPct = Number(s.pct);
       z = inv(Math.min(Math.max(fromPct, 0.25), 99.75) / 100); // 백분위 0·100은 구간 중앙값으로
     } else return null;
-    const a = C.schoolShare, sh = C.strongShare ?? 1;
-    const d = delta(a, C.top1Share[choice] ?? C.top1Share.default, sh);
-    const q = (a * cdf(z) + (1 - a) * nCdf(z, d, sh)) * 100;
+    const q = toCsat(z, C) * 100;
     const out = Math.round(q * 10) / 10;
     return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut),
       drop: Math.round((fromPct - out) * 10) / 10, fromStd: isNum(s.std) ? Number(s.std) : null, fromPct: isNum(s.pct) ? Number(s.pct) : null };
@@ -100,7 +109,7 @@
     };
   }
 
-  const api = { project, projectPct, projectScore, nShareTop, delta };
+  const api = { project, projectPct, projectScore, toCsat, nShareTop, delta };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.UnionCorrection = api;
 })(typeof window !== "undefined" ? window : globalThis);
