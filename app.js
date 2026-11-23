@@ -162,7 +162,7 @@
   }
 
   function rows() {
-    const q = state.q.trim().replace(/\s+/g, "");
+    const words = state.q.trim().split(/\s+/).filter(Boolean); // 띄어 쓴 낱말은 모두 들어 있어야 함
     const out = [];
     for (const u of D.units) {
       const univ = D.univs[u.u];
@@ -170,9 +170,9 @@
       else if (state.group && !(groupIds[state.group] && groupIds[state.group].has(u.u))) continue;
       if (state.cat && u.cat !== state.cat) continue;
       if (!state.cat && state.catGroup && catGroup[u.cat] !== state.catGroup) continue;
-      if (q) {
-        const hay = (univ.name + u.c + u.n + (catName[u.cat] || "")).replace(/\s+/g, "");
-        if (!hay.includes(q)) continue;
+      if (words.length) {
+        const hay = (univ.name + u.c + u.n + (u.cp || "") + (catName[u.cat] || "")).replace(/\s+/g, "");
+        if (!words.every((w) => hay.includes(w))) continue;
       }
       // 군별로 한 줄씩
       const byGun = new Map();
@@ -274,7 +274,7 @@
         }
       }
       return `<div class="slot"><div class="slot-gun">${g}군</div>
-        <div class="u-name">${esc(univ.name)}</div><div class="u-unit">${esc(u.n)}</div>
+        <div class="u-name">${esc(univ.name)}${u.cp ? ` <span class="tag camp">${esc(u.cp)}</span>` : ""}</div><div class="u-unit">${esc(u.n)}</div>
         <div class="slot-foot">${tier} ${score}<button type="button" class="unpick" data-gun="${g}">빼기</button></div></div>`;
     }).join("");
   }
@@ -299,7 +299,7 @@
       const u = row.u;
       const meta = `${row.gun === "군외" ? "군외" : row.gun + "군"} · ${row.quota}명`;
       return `<li class="row">
-        <div class="who"><div class="u-name">${esc(row.univ.name)}</div>
+        <div class="who"><div class="u-name">${esc(row.univ.name)}${u.cp ? ` <span class="tag camp">${esc(u.cp)}</span>` : ""}</div>
           <div class="u-unit">${esc(u.n)}${u.p ? ' <span class="tag">실기</span>' : ""}</div>
           <div class="u-col">${esc([u.c, catName[u.cat]].filter(Boolean).join(" · "))}${state.special ? " · " + esc(row.tracks.join(", ")) : ""}</div></div>
         <span class="meta">${meta}</span>

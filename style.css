@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root {
   --bg: #f6f7f9;
   --card: #ffffff;
@@ -185,3 +186,4 @@ table.proj th:first-child, table.proj td:first-child { text-align: left; }
 fieldset.area.three3 { grid-template-columns: repeat(3, 1fr); }
 .est { color: var(--warn); }
 .proj-note { margin: 8px 0 0; }
+.tag.camp { background: var(--warn-soft); color: var(--warn); font-weight: 700; vertical-align: 2px; }
