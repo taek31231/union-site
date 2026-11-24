@@ -239,7 +239,8 @@
     if (!ds.length) return "";
     const R = ds.reduce((a, d) => a + d.R, 0) / ds.length;
     const d = v.M - R;
-    return `<div class="cut"><span>${String(latest).slice(2)}학년도 합격선</span><span>환산 ${fmt(R)} <b>(${d >= 0 ? "+" : ""}${fmt(d)})</b></span></div>`;
+    const label = ds[0].label || "합격선";
+    return `<div class="cut"><span>${String(latest).slice(2)}학년도 ${label}</span><span>환산 ${fmt(R)} <b>(${d >= 0 ? "+" : ""}${fmt(d)})</b></span></div>`;
   }
 
 

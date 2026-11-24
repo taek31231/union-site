@@ -500,8 +500,48 @@
     return out;
   }
 
+  // 표준정규분포
+  function ncdf(x) {
+    const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2);
+    const q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return x > 0 ? 1 - q : q;
+  }
+  function ninv(p) { let lo = -8, hi = 8; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (ncdf(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; }
+
+  /* 누백 지원선(적정 80% · 예상 50% · 소신 20%)이 있는 학과(의대 등):
+   * 각 지원선의 누백 → 합격선 학생의 영역 백분위(영역 z = k × 종합 z) → 그 대학 환산점수 R80·R50·R20.
+   * 내 환산점수를 이 세 점 사이에서 로짓(합격률) 기준으로 보간해 합격 가능성을 낸다. */
+  function verdictNubaek(student, unit, univ, ctx, M, off) {
+    const nb = unit.nb, k = nb.k || 0.954;
+    const pts = [[nb.c80, 0.8], [nb.c50, 0.5], [nb.c20, 0.2]].map(([cum, pr]) => {
+      const p = ncdf(k * ninv(1 - cum / 100)) * 100;
+      const rep = repScore(unit, univ, Math.round(p * 1000) / 1000, ctx, off);
+      return rep ? { R: rep.R, L: Math.log(pr / (1 - pr)), cum } : null;
+    });
+    if (pts.some((x) => !x)) return null;
+    // R가 큰 순(적정 → 예상 → 소신)
+    const [a, b, c] = pts;
+    const seg = (x, y) => (x.R - y.R) > 1e-6 ? (x.L - y.L) / (x.R - y.R) : 0;
+    let L;
+    if (M >= b.R) L = b.L + seg(a, b) * (M - b.R);
+    else L = b.L + seg(b, c) * (M - b.R);
+    const prob = 1 / (1 + Math.exp(-L));
+    const tier = TIERS.find((t) => prob >= t.min).name;
+    return { prob, tier, M, detail: [{ year: nb.year, R: b.R, M, d: M - b.R, label: "예상선(합격률 50%)" }] };
+  }
+
   function verdict(student, unit, univ, ctx) {
     const cuts = unit && unit.ct;
+    if (unit && unit.nb && ctx && ctx.tables) {
+      const mine = compute(unit, univ, student, ctx.exam);
+      if (mine.score === null || mine.error) return null;
+      const T = ctx.tables, k = student.korean || {}, mm = student.math || {};
+      const off = {
+        k: num(k.std) !== null && num(k.pct) !== null ? k.std - lerp(T.korean, k.pct) : 0,
+        m: num(mm.std) !== null && num(mm.pct) !== null ? mm.std - lerp(T.math, mm.pct) : 0,
+      };
+      return verdictNubaek(student, unit, univ, ctx, mine.score, off);
+    }
     if (!cuts || !cuts.length || !ctx || !ctx.tables) return null;
     const mine = compute(unit, univ, student, ctx.exam);
     if (mine.score === null || mine.error) return null;
