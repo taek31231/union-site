@@ -527,7 +527,7 @@
     else L = b.L + seg(b, c) * (M - b.R);
     const prob = 1 / (1 + Math.exp(-L));
     const tier = TIERS.find((t) => prob >= t.min).name;
-    return { prob, tier, M, detail: [{ year: nb.year, R: b.R, M, d: M - b.R, label: "예상선(합격률 50%)" }] };
+    return { prob, tier, M, detail: [{ year: nb.year, R: b.R, M, d: M - b.R, label: "예상선" }] };
   }
 
   function verdict(student, unit, univ, ctx) {
