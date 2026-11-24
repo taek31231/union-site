@@ -7,6 +7,7 @@
   const $ = (s) => document.querySelector(s);
   const PAGE = 100;
   const MODE = document.body.dataset.mode === "mock" ? "mock" : "jungsi";
+  const VCTX = { exam: D.exam, tables: D.correction.pctToStd, mode: MODE }; // 대학별 판정용
   const K = (name) => (MODE === "mock" ? `union.mock.${name}` : `union.${name}`);
   // 1·2학년 희망 계열 → 2027 규칙에 맞춘 가정 선택과목
   const MED_CATS = new Set(["med", "dent", "kmed", "pharm", "vet"]);
@@ -189,7 +190,7 @@
         r = computeFor(u, univ);
         if (state.eligible && !r.eligible) continue;
       }
-      const v = r && r.eligible ? E.verdict(student, u.ct) : null;
+      const v = r && r.eligible ? E.verdict(student, u, univ, VCTX) : null;
       if (state.tiers.length && !(v && state.tiers.includes(v.tier))) continue;
       for (const [g, x] of byGun) out.push({ u, univ, gun: g, quota: x.n, tracks: x.tracks, r, v });
     }
@@ -231,18 +232,16 @@
     return `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>${cutLine(v)}`;
   }
 
-  // 가장 최근 학년도 합격선(여러 자료면 평균)과 내 점수 차이를 표에 적는다
+  // 가장 최근 학년도 합격선을 그 대학 환산점수로 바꾼 값과 내 환산점수 차이
   function cutLine(v) {
     const latest = Math.max(...v.detail.map((d) => d.year));
     const ds = v.detail.filter((d) => d.year === latest);
-    const avg = (k) => { const x = ds.map((d) => d[k]).filter((n) => typeof n === "number"); return x.length ? x.reduce((a, b) => a + b, 0) / x.length : null; };
-    const sign = (n) => (n >= 0 ? "+" : "") + fmt(n);
-    const parts = [];
-    const std = avg("std"), pct = avg("pct");
-    if (std !== null && v.me.std !== null) parts.push(`표준합 ${fmt(std)} <b>(${sign(v.me.std - std)})</b>`);
-    else if (pct !== null) parts.push(`백분위합 ${fmt(pct)}${v.me.pct !== null ? ` <b>(${sign(v.me.pct - pct)})</b>` : ""}`);
-    return parts.length ? `<div class="cut"><span>${String(latest).slice(2)}학년도 합격선</span>${parts.map((x) => `<span>${x}</span>`).join("")}</div>` : "";
+    if (!ds.length) return "";
+    const R = ds.reduce((a, d) => a + d.R, 0) / ds.length;
+    const d = v.M - R;
+    return `<div class="cut"><span>${String(latest).slice(2)}학년도 합격선</span><span>환산 ${fmt(R)} <b>(${d >= 0 ? "+" : ""}${fmt(d)})</b></span></div>`;
   }
+
 
   /* ---------- 모의지원 (가·나·다군 하나씩, 이 브라우저에만 저장) ---------- */
 
@@ -268,7 +267,7 @@
         const r = computeFor(u, univ);
         if (!r.eligible) tier = '<span class="tier t7">지원불가</span>';
         else {
-          const v = E.verdict(student, u.ct);
+          const v = E.verdict(student, u, univ, VCTX);
           if (v) { tier = `<span class="tier ${TIER_CLASS[v.tier]}">${v.tier}</span>`; cut = cutLine(v).replace('class="cut"', 'class="cut slot-cut"'); }
           if (r.score !== null) score = `<span class="of">환산 ${fmt(r.score)}</span>`;
         }
@@ -379,7 +378,7 @@
   if (D.exam.provisional) {
     $("#notice").textContent = MODE === "mock"
       ? "학평 성적을 N수생이 들어오는 실제 수능 기준으로 보정해 계산합니다. 대학별 반영 비율은 2028학년도 요강이 나오기 전이라 2027학년도 기준이며, 선택과목 조건은 적용하지 않습니다."
-      : "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 배치표의 국·수·탐 표준점수 합 합격선과 비교한 참고용입니다.";
+      : "수능 성적 발표 전이라 표준점수 최고점과 탐구 변환표준점수는 임시값을 씁니다. 판정은 지난 입시 합격선을 각 대학 환산 방식으로 계산해 내 환산점수와 비교한 참고용입니다.";
   }
   if (hasScores(student)) $("#scorePanel").hidden = false;
   renderPicks();

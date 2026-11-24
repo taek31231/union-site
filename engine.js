@@ -124,6 +124,12 @@
     return `${NAME[area] || area} ${b === "pct" ? "백분위" : "표준점수"}`;
   }
 
+  function lerpTable(t, x) {
+    if (x <= t[0][0]) return t[0][1];
+    for (let i = 1; i < t.length; i++) if (x <= t[i][0]) { const [x0, y0] = t[i - 1], [x1, y1] = t[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
+    return t[t.length - 1][1];
+  }
+
   function maxStd(exam, area, subject) {
     const m = exam.maxStd || {};
     if (area === "inquiry") return (m.inquiry && m.inquiry[subject]) || m.inquiryDefault || 70;
@@ -157,7 +163,11 @@
     for (const s of subs) {
       let raw, max;
       if (basis === "pct") { raw = num(s.pct); max = 100; }
-      else {
+      else if (basis === "conv" && exam.convTable && num(s.pct) !== null) {
+        // 변환표준점수는 백분위로 정해지므로 백분위→표준점수 대응표로 추정(과목 간 표준점수 차이 제거)
+        raw = lerpTable(exam.convTable, s.pct); max = maxStd(exam, "inquiry", s.subject);
+        flags.add("탐구 변환표준점수는 백분위로 추정");
+      } else {
         raw = num(s.std); max = maxStd(exam, "inquiry", s.subject);
         if (basis === "conv") flags.add("탐구 변환표준점수 대신 표준점수 사용");
         if (exam.provisional) flags.add("표준점수 최고점 임시값");
@@ -431,25 +441,93 @@
     return { std: s.includes(null) ? null : s[0] + s[1] + s[2], pct: p.includes(null) ? null : p[0] + p[1] + p[2] };
   }
 
-  function verdict(student, cuts) {
-    if (!cuts || !cuts.length) return null;
-    const me = sums(student);
-    if (me.std === null && me.pct === null) return null;
-    // 1) 같은 학년도 안에서 자료(회사)별 차이를 평균  2) 학년도별 가중치로 평균
-    //    (자료가 여러 개인 학년도가 더 크게 반영되지 않도록)
+  /* 대학별 계산 방식으로 판정한다.
+   * 배치표 합격선(국·수·탐 백분위합 또는 표준합)을 "그 선에 걸친 학생"의 성적으로 바꾼 뒤,
+   * 그 학생과 우리 학생을 같은 대학 환산식(백분위/표준점수, 탐구 1·2과목, 영어·한국사 표, 가산점 등)으로 계산해 비교한다.
+   *  - 합격선 학생: 국·수·탐 모두 같은 백분위 p (= 백분위합/3). 표준점수는 백분위→표준점수 대응표(ctx.tables)로.
+   *  - 영어·한국사: 그 백분위 수준 학생의 흔한 등급.
+   *  - 자연계 학과(unit.nat)의 합격선 학생은 미적·과탐 응시자, 인문계는 확통·사탐 응시자로 둔다.
+   *    1·2학년(ctx.mode === "mock")은 선택과목이 없으므로 둘 다 공통·통합으로 둔다.
+   *  - 차이를 "표준합 6점이 늘 때 그 대학 환산점수가 늘어나는 폭"으로 나눠, 이전과 같은 단위로 판정 단계를 낸다.
+   */
+  function lerp(t, x) {
+    if (x <= t[0][0]) return t[0][1];
+    for (let i = 1; i < t.length; i++) if (x <= t[i][0]) { const [x0, y0] = t[i - 1], [x1, y1] = t[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
+    return t[t.length - 1][1];
+  }
+  const GRADE_CUT = [96, 89, 77, 60, 40, 23, 11, 4];
+  const gradeOfPct = (p) => { for (let i = 0; i < GRADE_CUT.length; i++) if (p >= GRADE_CUT[i]) return i + 1; return 9; };
+
+  function repStudent(p, nat, ctx, off = { k: 0, m: 0 }) {
+    const T = ctx.tables, mock = ctx.mode === "mock";
+    const g = gradeOfPct(p);
+    const eng = p >= 94.5 ? 1 : p >= 78 ? 2 : p >= 55 ? 3 : p >= 35 ? 4 : 5; // 영어 절대평가 등급 비율(평가원 2023~2026 평균) 기준
+    const hist = p >= 75 ? 1 : p >= 50 ? 2 : 3;
+    const subj = mock ? [["통합사회", "통합"], ["통합과학", "통합"]]
+      : nat ? [["생명과학Ⅰ", "과탐"], ["지구과학Ⅰ", "과탐"]] : [["사회·문화", "사탐"], ["생활과 윤리", "사탐"]];
+    const istd = lerp(T.inquiry, p);
+    return {
+      korean: { choice: mock ? "공통" : nat ? "언매" : "화작", std: lerp(T.korean, p) + off.k, pct: p, grade: g },
+      math: { choice: mock ? "공통" : nat ? "미적" : "확통", std: lerp(T.math, p) + off.m, pct: p, grade: g },
+      english: { grade: eng }, history: { grade: hist },
+      inquiry: subj.map(([subject, area]) => ({ subject, area, choice: mock ? "통합" : undefined, std: istd, pct: p, grade: g })),
+    };
+  }
+  const repStdSum = (p, T) => lerp(T.korean, p) + lerp(T.math, p) + 2 * lerp(T.inquiry, p);
+
+  // 표준합 S가 되는 평균 백분위 p (백분위합이 없는 합격선용)
+  function pctForStdSum(S, T) {
+    let lo = 0, hi = 100;
+    for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (repStdSum(m, T) < S) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+
+  const repCache = new Map();
+  function repScore(unit, univ, p, ctx, off) {
+    const nat = !!unit.nat;
+    const key = `${unit.u}|${unit.i}|${ctx.mode}|${p.toFixed(2)}|${off.k.toFixed(1)}|${off.m.toFixed(1)}`;
+    if (repCache.has(key)) return repCache.get(key);
+    const T = ctx.tables;
+    const r0 = compute(unit, univ, repStudent(p, nat, ctx, off), ctx.exam);
+    // 표준합 +6에 해당하는 백분위
+    const target = repStdSum(p, T) + 6;
+    let p2 = p;
+    if (repStdSum(100, T) > target) { let lo = p, hi = 100; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (repStdSum(m, T) < target) lo = m; else hi = m; } p2 = (lo + hi) / 2; }
+    else p2 = Math.min(100, p + 3);
+    const r1 = compute(unit, univ, repStudent(p2, nat, ctx, off), ctx.exam);
+    const out = r0.score === null || r1.score === null ? null : { R: r0.score, scale: Math.max(r1.score - r0.score, 1e-6) };
+    repCache.set(key, out);
+    return out;
+  }
+
+  function verdict(student, unit, univ, ctx) {
+    const cuts = unit && unit.ct;
+    if (!cuts || !cuts.length || !ctx || !ctx.tables) return null;
+    const mine = compute(unit, univ, student, ctx.exam);
+    if (mine.score === null || mine.error) return null;
+    const M = mine.score;
+    // 학생 성적표의 백분위↔표준점수 관계가 대응표와 얼마나 어긋나는지(시험 난이도에 따른 척도 차이)를
+    // 합격선 학생에게도 똑같이 적용해 같은 척도에서 비교한다.
+    const T = ctx.tables, k = student.korean || {}, mm = student.math || {};
+    const off = {
+      k: num(k.std) !== null && num(k.pct) !== null ? k.std - lerp(T.korean, k.pct) : 0,
+      m: num(mm.std) !== null && num(mm.pct) !== null ? mm.std - lerp(T.math, mm.pct) : 0,
+    };
     const byYear = new Map();
     const detail = [];
     for (const c of cuts) {
-      // 표준점수 합 기준. 표준합이 없을 때만 백분위 합으로 대신한다.
-      let u = null;
-      if (me.std !== null && num(c.std)) u = (me.std - c.std) / 6;
-      else if (me.pct !== null && num(c.pct)) u = (me.pct - c.pct) / 4;
-      if (u === null) continue;
+      let p = null;
+      if (num(c.pct)) p = Math.min(100, c.pct / 3);
+      else if (num(c.std)) p = pctForStdSum(c.std, ctx.tables);
+      if (p === null) continue;
+      const rep = repScore(unit, univ, Math.round(p * 10) / 10, ctx, off);
+      if (!rep) continue;
+      const u = (M - rep.R) / rep.scale;
       let w = (c.m || 1) * (c.gd ? 0.7 : 1);
       if (c.kind === "가채점") w *= 0.5;
       const y = byYear.get(c.year) || { w: 0, u: 0 };
       y.w += w; y.u += w * u; byYear.set(c.year, y);
-      detail.push({ year: c.year, source: c.source, std: c.std, pct: c.pct, dStd: me.std !== null && num(c.std) ? me.std - c.std : null, dPct: me.pct !== null && num(c.pct) ? me.pct - c.pct : null });
+      detail.push({ year: c.year, R: rep.R, M, d: M - rep.R });
     }
     let wsum = 0, usum = 0;
     for (const [year, y] of byYear) {
@@ -458,10 +536,10 @@
     }
     if (!wsum) return null;
     const U = usum / wsum;
-    // 배치표 합격선과 같은 점수 = 적정(약 65%)
+    // 합격선 학생과 환산점수가 같으면 적정(약 65%)
     const prob = 1 / (1 + Math.exp(-(U + 0.62)));
     const tier = TIERS.find((t) => prob >= t.min).name;
-    return { prob, tier, me, detail };
+    return { prob, tier, M, detail };
   }
 
   const api = { compute, eligibility, perfectScore, verdict, sums, TIERS, AREAS };
