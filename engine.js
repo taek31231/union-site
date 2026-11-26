@@ -482,6 +482,7 @@
     return (lo + hi) / 2;
   }
 
+  const STEP = 4;
   const repCache = new Map();
   function repScore(unit, univ, p, ctx, off) {
     const nat = !!unit.nat;
@@ -489,8 +490,8 @@
     if (repCache.has(key)) return repCache.get(key);
     const T = ctx.tables;
     const r0 = compute(unit, univ, repStudent(p, nat, ctx, off), ctx.exam);
-    // 표준합 +6에 해당하는 백분위
-    const target = repStdSum(p, T) + 6;
+    // 판정 한 칸(로짓 1)의 폭 = 표준합 STEP점에 해당하는 그 대학 환산점수 차이
+    const target = repStdSum(p, T) + STEP;
     let p2 = p;
     if (repStdSum(100, T) > target) { let lo = p, hi = 100; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (repStdSum(m, T) < target) lo = m; else hi = m; } p2 = (lo + hi) / 2; }
     else p2 = Math.min(100, p + 3);
@@ -555,8 +556,13 @@
     };
     const byYear = new Map();
     const detail = [];
+    // 학과의 합격선 중 다른 해·다른 자료와 동떨어진 값(평균 백분위 중앙값에서 6 이상)은 잘못 연결된 것으로 보고 뺀다
+    const pOf = (c) => (num(c.pct) ? Math.min(100, c.pct / 3) : num(c.std) ? pctForStdSum(c.std, ctx.tables) : null);
+    const ps = cuts.map(pOf).filter((x) => x !== null).sort((a, b) => a - b);
+    const med = ps.length ? ps[Math.floor(ps.length / 2)] : null;
     for (const c of cuts) {
       let p = null;
+      if (med !== null && pOf(c) !== null && Math.abs(pOf(c) - med) > 6) continue;
       if (num(c.pct)) p = Math.min(100, c.pct / 3);
       else if (num(c.std)) p = pctForStdSum(c.std, ctx.tables);
       if (p === null) continue;
