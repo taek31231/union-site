@@ -12,6 +12,7 @@
     const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
     return x > 0 ? 1 - p : p;
   }
+  const ncdf = (x) => cdf(x);
   function inv(p) {
     let lo = -8, hi = 8;
     for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (cdf(m) < p) lo = m; else hi = m; }
@@ -84,6 +85,12 @@
       fromPct = Math.round(p * 10) / 10; viaStd = true;
       z = inv(Math.min(Math.max(p, 0.25), 99.75) / 100);
     } else return null;
+    // 학평을 본 재학생 중 수능을 보지 않는 학생(주로 하위권)을 빼고, 수능 재학생 기준 위치로 바꾼다
+    if (C.schoolTakeRate && C.schoolTakeRate < 1) {
+      const drop = (1 - C.schoolTakeRate) * 100;
+      const pp = Math.min(Math.max((ncdf(z) * 100 - drop) / C.schoolTakeRate, 0.25), 99.75);
+      z = inv(pp / 100);
+    }
     const q = toCsat(z, C) * 100;
     const out = Math.round(q * 10) / 10;
     return { pct: out, std: Math.round(interp(C.pctToStd[kind], q)), grade: gradeOf(q, C.gradeCut),
