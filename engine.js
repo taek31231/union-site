@@ -280,7 +280,9 @@
       const base = num(sc.base) || 0, eff = num(sc.effective) || total - base;
       for (const [a, wt] of Object.entries(w)) score += (base + eff * (norms[a] ?? 0)) * wt / wsum;
     } else {
-      for (const [a, wt] of Object.entries(w)) score += total * (wt / wsum) * (norms[a] ?? 0);
+      // 배점(points)으로 주어진 경우 각 영역 만점이 곧 배점이다(영어를 따로 더하는 대학은 배점 합 < 총점)
+      const span = sc.points ? wsum : total;
+      for (const [a, wt] of Object.entries(w)) score += span * (wt / wsum) * (norms[a] ?? 0);
     }
     // 영어가 가중치에 없으면 가산·감점으로 처리
     if (!w.english && st.english) score += additive(englishTable(sc), (sc.english || {}).type, num(st.english.grade));
@@ -575,11 +577,28 @@
     };
   }
 
-  function ipLine(row, unit, univ, ctx, off) {
-    let pr = row.p70;
-    // 탐구 1과목만 반영하는 모집단위는 탐2가 비어 있으므로 탐1과 같게 둔다
+  // 공개 컷과 우리 척도의 차이(연도·변환표준점수): 같은 대학·같은 환산방식 학과들의 (프로필 점수 − 공개 컷) 중앙값
+  const CAL = new Map();
+  function calibOffset(unit, univ, ctx, off) {
+    const list = univ.ipCal && univ.ipCal[unit.sc];
+    if (!list || list.length < 5) return null;
+    const key = `${univ.name}|${unit.sc}|${ctx.mode}|${off.k.toFixed(1)}|${off.m.toFixed(1)}`;
+    if (CAL.has(key)) return CAL.get(key);
+    const ds = [];
+    for (const x of list) { const R = profileScore(x.p70, x, univ, ctx, off); if (R !== null) ds.push(R - x.conv70); }
+    ds.sort((a, b) => a - b);
+    const v = ds.length >= 5 ? ds[Math.floor(ds.length / 2)] : null;
+    CAL.set(key, v);
+    return v;
+  }
+
+  function profileScore(pr, unit, univ, ctx, off) {
     if (pr && num(pr.t2) === null && num(pr.t1) !== null) pr = Object.assign({}, pr, { t2: pr.t1 });
-    if (pr && [pr.k, pr.m, pr.t1, pr.t2].every((x) => num(x) !== null)) {
+    if (!(pr && [pr.k, pr.m, pr.t1, pr.t2].every((x) => num(x) !== null))) return null;
+    return ipProfile(pr, unit, univ, ctx, off).score;
+  }
+
+  function ipProfile(pr, unit, univ, ctx, off) {
       const pAvg = (pr.k + pr.m + (pr.t1 + pr.t2) / 2) / 3;
       let r;
       if (num(pr.e) === null) {
@@ -587,19 +606,46 @@
         const probs = engProbs(pAvg); let sum = 0, w = 0, bad = false;
         probs.forEach((q, g) => { if (q < 0.005 || bad) return; const x = compute(unit, univ, profileStudent(Object.assign({}, pr, { e: g + 1 }), !!unit.nat, ctx, off), ctx.exam); if (x.score === null) bad = true; else { sum += q * x.score; w += q; } });
         r = { score: bad || !w ? null : sum / w };
-      } else r = compute(unit, univ, profileStudent(pr, !!unit.nat, ctx, off), ctx.exam);
-      const sc = repScore(unit, univ, Math.round(pAvg * 10) / 10, ctx, off);
+      } else {
+        // 영어·한국사가 평균값(소수, 한국외대 등)으로 공개되면 위아래 등급을 비율대로 섞는다
+        const split = (x) => { const x0 = Math.max(1, Math.min(9, x || 1)), lo = Math.floor(x0), f = x0 - lo; return f < 1e-6 ? [[lo, 1]] : [[lo, 1 - f], [lo + 1, f]]; };
+        let sum = 0, bad = false;
+        for (const [e, we] of split(pr.e)) for (const [h, wh] of split(pr.h)) {
+          const x = compute(unit, univ, profileStudent(Object.assign({}, pr, { e, h }), !!unit.nat, ctx, off), ctx.exam);
+          if (x.score === null) bad = true; else sum += we * wh * x.score;
+        }
+        r = { score: bad ? null : sum };
+      }
+      return { score: r.score, pAvg };
+  }
+
+  function ipLine(row, unit, univ, ctx, off) {
+    let pr = row.p70;
+    // 탐구 1과목만 반영하는 모집단위는 탐2가 비어 있으므로 탐1과 같게 둔다
+    if (pr && num(pr.t2) === null && num(pr.t1) !== null) pr = Object.assign({}, pr, { t2: pr.t1 });
+    const full = pr && [pr.k, pr.m, pr.t1, pr.t2].every((x) => num(x) !== null);
+    // 척도가 같은 대학: 공개 컷 + 보정값 (70% 학생 한 명의 과목 성적은 잡음이 커서 수준 맞추기에만 쓴다)
+    const cal = row.calib && num(row.conv70) !== null ? calibOffset(unit, univ, ctx, off) : null;
+    if (cal !== null) return lineAt(row.conv70 + cal, unit, univ, ctx, off);
+    if (full) {
+      const r = ipProfile(pr, unit, univ, ctx, off);
+      const sc = repScore(unit, univ, Math.round(r.pAvg * 10) / 10, ctx, off);
       if (r.score === null || !sc) return null;
       return { R: r.score, scale: sc.scale };
     }
-    if (num(row.conv70) !== null && row.sameScale) {
+    if (num(row.conv70) !== null && row.sameScale) return lineAt(row.conv70, unit, univ, ctx, off);
+    return null;
+  }
+
+  // 환산점수 R인 합격선: 그 점수를 내는 평균 백분위를 찾아 판정 폭(scale)을 구한다
+  function lineAt(R, unit, univ, ctx, off) {
+    {
       // 환산점수 컷만 있는 경우: 그 점수와 같은 환산점수를 내는 평균 백분위를 찾아 판정 폭을 구한다
       let lo = 50, hi = 100;
-      for (let i = 0; i < 25; i++) { const m = (lo + hi) / 2; const x = repScore(unit, univ, Math.round(m * 10) / 10, ctx, off); if (x && x.R < row.conv70) lo = m; else hi = m; }
+      for (let i = 0; i < 25; i++) { const m = (lo + hi) / 2; const x = repScore(unit, univ, Math.round(m * 10) / 10, ctx, off); if (x && x.R < R) lo = m; else hi = m; }
       const sc = repScore(unit, univ, Math.round(((lo + hi) / 2) * 10) / 10, ctx, off);
-      return sc ? { R: row.conv70, scale: sc.scale } : null;
+      return sc ? { R, scale: sc.scale } : null;
     }
-    return null;
   }
 
   function verdict(student, unit, univ, ctx) {
@@ -630,7 +676,7 @@
     const detail = [];
     // 학과의 합격선 중 다른 해·다른 자료와 동떨어진 값(평균 백분위 중앙값에서 6 이상)은 잘못 연결된 것으로 보고 뺀다
     const pOf = (c) => (num(c.pct) ? Math.min(100, c.pct / 3) : num(c.std) ? pctForStdSum(c.std, ctx.tables) : null);
-    const ps = cuts.map(pOf).filter((x) => x !== null).sort((a, b) => a - b);
+    const ps = (cuts || []).map(pOf).filter((x) => x !== null).sort((a, b) => a - b);
     const med = ps.length ? ps[Math.floor(ps.length / 2)] : null;
     for (const c of cuts || []) {
       let p = null;
