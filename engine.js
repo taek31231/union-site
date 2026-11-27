@@ -314,18 +314,16 @@
     }
     const g = num(st.english && st.english.grade);
     const t = englishTable(sc);
+    let engAdd = 0; // 가산·감점형 영어는 한국사처럼 최종 척도에서 더하거나 뺀다(고려대: 1000점 환산 후 감점)
     if (t && g !== null) {
       const ev = t[g - 1];
       const mult = num((sc.english || {}).mult) || 1;
-      if (/가산|감점|차감/.test((sc.english || {}).type || "")) score += additive(t, sc.english.type, g);
+      if (/가산|감점|차감/.test((sc.english || {}).type || "")) engAdd = additive(t, sc.english.type, g);
       else { score += ev * mult; max += Math.max(...t) * mult; }
     }
-    score += historyPoints(st, sc);
     let total = num(sc.total) || num(sc.rawTotal) || Math.round(max);
-    if (num(sc.rawTotal) && num(sc.total)) {
-      const h = historyPoints(st, sc);
-      score = (score - h) * sc.total / sc.rawTotal + h;
-    }
+    if (num(sc.rawTotal) && num(sc.total)) score = score * sc.total / sc.rawTotal;
+    score += historyPoints(st, sc) + engAdd;
     if (sc.method === "sumScaled") {
       const m = (sc.formula || "").match(/\/\s*(\d+)\s*×\s*(\d+)/);
       if (m) { score = score / +m[1] * +m[2]; total = +m[2]; }
@@ -483,20 +481,51 @@
   }
 
   const STEP = 4;
+  // 영어 등급 누적 비율(상위 %, 평가원 2023~2026 평균)과 영어·국수탐 종합 위치의 상관(가정)
+  const ENG_CUM = [5.5, 22.3, 45.7, 66.8, 80.3, 88.9, 94.6, 98.6];
+  const ENG_RHO = 0.75, AREA_K = 0.954;
+  // 국·수·탐 평균 백분위 p인 학생의 영어 등급 확률 [1등급, 2등급, ...]
+  function engProbs(p) {
+    const zc = ninv(Math.min(Math.max(p, 0.01), 99.99) / 100) / AREA_K;
+    const mu = ENG_RHO * zc, sd = Math.sqrt(1 - ENG_RHO * ENG_RHO);
+    const cuts = ENG_CUM.map((c) => ninv(1 - c / 100)); // 각 등급 아래 경계(z)
+    const pr = [];
+    let upper = 1;
+    for (let g = 0; g < 9; g++) {
+      const below = g < 8 ? ncdf((cuts[g] - mu) / sd) : 0;
+      pr.push(Math.max(0, upper - below)); upper = below;
+    }
+    return pr;
+  }
   const repCache = new Map();
+  // 합격선 학생의 환산점수: 영어 등급을 하나로 정하지 않고 등급 확률로 가중 평균
+  function expScore(unit, univ, p, nat, ctx, off) {
+    const pr = engProbs(p);
+    let sum = 0, w = 0;
+    for (let g = 0; g < pr.length; g++) {
+      if (pr[g] < 0.005) continue;
+      const st = repStudent(p, nat, ctx, off);
+      st.english = { grade: g + 1 };
+      const r = compute(unit, univ, st, ctx.exam);
+      if (r.score === null) return null;
+      sum += pr[g] * r.score; w += pr[g];
+    }
+    return w ? sum / w : null;
+  }
+
   function repScore(unit, univ, p, ctx, off) {
     const nat = !!unit.nat;
     const key = `${unit.u}|${unit.i}|${ctx.mode}|${p.toFixed(2)}|${off.k.toFixed(1)}|${off.m.toFixed(1)}`;
     if (repCache.has(key)) return repCache.get(key);
     const T = ctx.tables;
-    const r0 = compute(unit, univ, repStudent(p, nat, ctx, off), ctx.exam);
+    const r0 = expScore(unit, univ, p, nat, ctx, off);
     // 판정 한 칸(로짓 1)의 폭 = 표준합 STEP점에 해당하는 그 대학 환산점수 차이
     const target = repStdSum(p, T) + STEP;
     let p2 = p;
     if (repStdSum(100, T) > target) { let lo = p, hi = 100; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (repStdSum(m, T) < target) lo = m; else hi = m; } p2 = (lo + hi) / 2; }
     else p2 = Math.min(100, p + 3);
-    const r1 = compute(unit, univ, repStudent(p2, nat, ctx, off), ctx.exam);
-    const out = r0.score === null || r1.score === null ? null : { R: r0.score, scale: Math.max(r1.score - r0.score, 1e-6) };
+    const r1 = expScore(unit, univ, p2, nat, ctx, off);
+    const out = r0 === null || r1 === null ? null : { R: r0, scale: Math.max(r1 - r0, 1e-6) };
     repCache.set(key, out);
     return out;
   }
