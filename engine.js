@@ -560,6 +560,48 @@
     return { prob, tier, M, detail: [{ year: nb.year, R: b.R, M, d: M - b.R, label: "예상선" }] };
   }
 
+  /* 대학 공개 입결(어디가): 최종등록자 70% 컷 학생의 과목별 백분위·영어/한국사 등급이 있으면
+   * 그 성적으로 합격선 학생을 그대로 만든다(대학마다 다른 합격자 성적 구성을 반영).
+   * 백분위가 없고 대학 환산점수 컷만 있으면 그 점수를 합격선으로 쓴다. */
+  function profileStudent(pr, nat, ctx, off) {
+    const T = ctx.tables, mock = ctx.mode === "mock";
+    const subj = mock ? [["통합사회", "통합"], ["통합과학", "통합"]]
+      : nat ? [["생명과학Ⅰ", "과탐"], ["지구과학Ⅰ", "과탐"]] : [["사회·문화", "사탐"], ["생활과 윤리", "사탐"]];
+    return {
+      korean: { choice: mock ? "공통" : nat ? "언매" : "화작", std: lerp(T.korean, pr.k) + off.k, pct: pr.k, grade: gradeOfPct(pr.k) },
+      math: { choice: mock ? "공통" : nat ? "미적" : "확통", std: lerp(T.math, pr.m) + off.m, pct: pr.m, grade: gradeOfPct(pr.m) },
+      english: { grade: pr.e || 1 }, history: { grade: pr.h || 1 },
+      inquiry: [pr.t1, pr.t2].map((t, i) => ({ subject: subj[i][0], area: subj[i][1], choice: mock ? "통합" : undefined, std: lerp(T.inquiry, t), pct: t, grade: gradeOfPct(t) })),
+    };
+  }
+
+  function ipLine(row, unit, univ, ctx, off) {
+    let pr = row.p70;
+    // 탐구 1과목만 반영하는 모집단위는 탐2가 비어 있으므로 탐1과 같게 둔다
+    if (pr && num(pr.t2) === null && num(pr.t1) !== null) pr = Object.assign({}, pr, { t2: pr.t1 });
+    if (pr && [pr.k, pr.m, pr.t1, pr.t2].every((x) => num(x) !== null)) {
+      const pAvg = (pr.k + pr.m + (pr.t1 + pr.t2) / 2) / 3;
+      let r;
+      if (num(pr.e) === null) {
+        // 영어 등급이 공개되지 않은 경우(고려대 등): 그 수준 학생의 영어 등급 확률로 기댓값
+        const probs = engProbs(pAvg); let sum = 0, w = 0, bad = false;
+        probs.forEach((q, g) => { if (q < 0.005 || bad) return; const x = compute(unit, univ, profileStudent(Object.assign({}, pr, { e: g + 1 }), !!unit.nat, ctx, off), ctx.exam); if (x.score === null) bad = true; else { sum += q * x.score; w += q; } });
+        r = { score: bad || !w ? null : sum / w };
+      } else r = compute(unit, univ, profileStudent(pr, !!unit.nat, ctx, off), ctx.exam);
+      const sc = repScore(unit, univ, Math.round(pAvg * 10) / 10, ctx, off);
+      if (r.score === null || !sc) return null;
+      return { R: r.score, scale: sc.scale };
+    }
+    if (num(row.conv70) !== null && row.sameScale) {
+      // 환산점수 컷만 있는 경우: 그 점수와 같은 환산점수를 내는 평균 백분위를 찾아 판정 폭을 구한다
+      let lo = 50, hi = 100;
+      for (let i = 0; i < 25; i++) { const m = (lo + hi) / 2; const x = repScore(unit, univ, Math.round(m * 10) / 10, ctx, off); if (x && x.R < row.conv70) lo = m; else hi = m; }
+      const sc = repScore(unit, univ, Math.round(((lo + hi) / 2) * 10) / 10, ctx, off);
+      return sc ? { R: row.conv70, scale: sc.scale } : null;
+    }
+    return null;
+  }
+
   function verdict(student, unit, univ, ctx) {
     const cuts = unit && unit.ct;
     if (unit && unit.nb && ctx && ctx.tables) {
@@ -572,7 +614,8 @@
       };
       return verdictNubaek(student, unit, univ, ctx, mine.score, off);
     }
-    if (!cuts || !cuts.length || !ctx || !ctx.tables) return null;
+    if ((!cuts || !cuts.length) && !(unit && unit.ip && unit.ip.length)) return null;
+    if (!ctx || !ctx.tables) return null;
     const mine = compute(unit, univ, student, ctx.exam);
     if (mine.score === null || mine.error) return null;
     const M = mine.score;
@@ -589,7 +632,7 @@
     const pOf = (c) => (num(c.pct) ? Math.min(100, c.pct / 3) : num(c.std) ? pctForStdSum(c.std, ctx.tables) : null);
     const ps = cuts.map(pOf).filter((x) => x !== null).sort((a, b) => a - b);
     const med = ps.length ? ps[Math.floor(ps.length / 2)] : null;
-    for (const c of cuts) {
+    for (const c of cuts || []) {
       let p = null;
       if (med !== null && pOf(c) !== null && Math.abs(pOf(c) - med) > 6) continue;
       if (num(c.pct)) p = Math.min(100, c.pct / 3);
@@ -603,6 +646,15 @@
       const y = byYear.get(c.year) || { w: 0, u: 0 };
       y.w += w; y.u += w * u; byYear.set(c.year, y);
       detail.push({ year: c.year, R: rep.R, M, d: M - rep.R });
+    }
+    for (const row of unit.ip || []) {
+      const L = ipLine(row, unit, univ, ctx, off);
+      if (!L) continue;
+      const y = byYear.get(row.year);
+      if (!y || !y.ip) { byYear.set(row.year, { w: 0, u: 0, ip: true }); detail.splice(0, detail.length, ...detail.filter((d) => d.year !== row.year)); }
+      const yy = byYear.get(row.year);
+      yy.w += 1; yy.u += (M - L.R) / L.scale;
+      detail.push({ year: row.year, R: L.R, M, d: M - L.R, label: "70%컷" });
     }
     let wsum = 0, usum = 0;
     for (const [year, y] of byYear) {
